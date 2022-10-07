@@ -68,10 +68,80 @@ impl Scanner {
             '+' => self.add_token(Plus),
             ';' => self.add_token(Semicolon),
             '*' => self.add_token(Star),
+            '!' => {
+                let token = if self.char_match('=') {
+                    // !=
+                    BangEqual
+                } else {
+                    Bang
+                };
+                self.add_token(token);
+            }
+            '=' => {
+                let token = if self.char_match('=') {
+                    EqualEqual
+                } else {
+                    Equal
+                };
+
+                self.add_token(token);
+            }
+            '<' => {
+                let token = if self.char_match('=') {
+                    LessEqual
+                } else {
+                    Less
+                };
+
+                self.add_token(token);
+            }
+            '>' => {
+                let token = if self.char_match('=') {
+                    GreaterEqual
+                } else {
+                    Greater
+                };
+
+                self.add_token(token);
+            }
+            '/' => {
+                if self.char_match('/') {
+                    loop {
+                        if self.peek() == '\n' || self.is_at_end() {
+                            break;
+                        }
+                        self.advance();
+                    }
+                } else {
+                    self.add_token(Slash);
+                }
+            }
+            ' ' | '\r' | '\t' => {},
+            '\n' => self.line += 1,
+
             _ => return Err(format!("Unrecognized char at line {}: {}", self.line, c)),
         }
 
-        todo!()
+        Ok(())
+    }
+
+    fn peek(self: &Self) -> char {
+        if self.is_at_end() {
+            return '\0';
+        }
+        self.source.as_bytes()[self.current] as char
+    }
+
+    fn char_match(self: &mut Self, ch: char) -> bool {
+        if self.is_at_end() {
+            return false;
+        }
+        if self.source.as_bytes()[self.current] as char != ch {
+            return false;
+        } else {
+            self.current += 1;
+            return true;
+        }
     }
 
     fn advance(self: &mut Self) -> char {
@@ -100,7 +170,7 @@ impl Scanner {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TokenType {
     // Single-char tokens
     LeftParen,
@@ -200,3 +270,41 @@ var test2 = test + 0.2;
 
 
 */
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn handle_one_char_tokens() {
+        let source = "(( )) }{";
+        let mut scanner = Scanner::new(source);
+        scanner.scan_tokens();
+
+        assert_eq!(scanner.tokens.len(), 7);
+        assert_eq!(scanner.tokens[0].token_type, LeftParen);
+        assert_eq!(scanner.tokens[1].token_type, LeftParen);
+        assert_eq!(scanner.tokens[2].token_type, RightParen);
+        assert_eq!(scanner.tokens[3].token_type, RightParen);
+        assert_eq!(scanner.tokens[4].token_type, RightBrace);
+        assert_eq!(scanner.tokens[5].token_type, LeftBrace);
+        assert_eq!(scanner.tokens[6].token_type, Eof);
+    }
+
+    #[test]
+    fn handle_two_char_tokens() {
+        let source = "! != == >=";
+        let mut scanner = Scanner::new(source);
+        scanner.scan_tokens();
+
+        assert_eq!(scanner.tokens.len(), 5);
+        assert_eq!(scanner.tokens[0].token_type, Bang);
+        assert_eq!(scanner.tokens[1].token_type, BangEqual);
+        assert_eq!(scanner.tokens[2].token_type, EqualEqual);
+        assert_eq!(scanner.tokens[3].token_type, GreaterEqual);
+        assert_eq!(scanner.tokens[4].token_type, Eof);
+    }
+
+}
+
