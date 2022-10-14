@@ -38,10 +38,10 @@ impl Scanner {
 
         if errors.len() > 0 {
             let mut joined = "".to_string();
-            errors.iter().map(|msg| {
-                joined.push_str(&msg);
+            for error in errors {
+                joined.push_str(&error);
                 joined.push_str("\n");
-            });
+            };
             return Err(joined);
         }
 
@@ -116,11 +116,33 @@ impl Scanner {
                     self.add_token(Slash);
                 }
             }
-            ' ' | '\r' | '\t' => {},
+            ' ' | '\r' | '\t' => {}
             '\n' => self.line += 1,
+            '"' => self.string()?,
 
             _ => return Err(format!("Unrecognized char at line {}: {}", self.line, c)),
         }
+
+        Ok(())
+    }
+
+    fn string(self: &mut Self) -> Result<(), String> {
+         while self.peek() != '"' && !self.is_at_end() {
+            if self.peek() == '\n' {
+                self.line += 1;
+            }
+            self.advance();
+        }
+
+        if self.is_at_end() {
+            return Err("Unterminated string".to_string());
+        }
+
+        self.advance();
+
+        let value = &self.source[self.start + 1..self.current - 1];
+
+        self.add_token_lit(StringLit, Some(StringValue(value.to_string())));
 
         Ok(())
     }
@@ -129,14 +151,14 @@ impl Scanner {
         if self.is_at_end() {
             return '\0';
         }
-        self.source.as_bytes()[self.current] as char
+        self.source.chars().nth(self.current).unwrap()
     }
 
     fn char_match(self: &mut Self, ch: char) -> bool {
         if self.is_at_end() {
             return false;
         }
-        if self.source.as_bytes()[self.current] as char != ch {
+        if self.source.chars().nth(self.current).unwrap() != ch {
             return false;
         } else {
             self.current += 1;
@@ -145,10 +167,10 @@ impl Scanner {
     }
 
     fn advance(self: &mut Self) -> char {
-        let c = self.source.as_bytes()[self.current];
+        let c = self.source.chars().nth(self.current).unwrap();
         self.current += 1;
 
-        c as char
+        c
     }
 
     fn add_token(self: &mut Self, token_type: TokenType) {
@@ -157,10 +179,10 @@ impl Scanner {
 
     fn add_token_lit(self: &mut Self, token_type: TokenType, literal: Option<LiteralValue>) {
         let mut text = "".to_string();
-        let bytes = self.source.as_bytes();
-        for i in self.start..self.current {
-            text.push(bytes[i] as char);
-        }
+        let lit = self.source[self.start..self.current]
+            .chars()
+            .map(|ch| text.push(ch));
+
         self.tokens.push(Token {
             token_type: token_type,
             lexeme: text,
@@ -197,7 +219,7 @@ pub enum TokenType {
 
     // Literals
     Identifier,
-    String,
+    StringLit,
     Number,
 
     // Keywords
@@ -235,6 +257,7 @@ pub enum LiteralValue {
     StringValue(String),
     IdentifierVal(String),
 }
+use LiteralValue::*;
 
 #[derive(Debug, Clone)]
 pub struct Token {
@@ -271,7 +294,6 @@ var test2 = test + 0.2;
 
 */
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -280,7 +302,7 @@ mod tests {
     fn handle_one_char_tokens() {
         let source = "(( )) }{";
         let mut scanner = Scanner::new(source);
-        scanner.scan_tokens();
+        scanner.scan_tokens().unwrap();
 
         assert_eq!(scanner.tokens.len(), 7);
         assert_eq!(scanner.tokens[0].token_type, LeftParen);
@@ -296,7 +318,7 @@ mod tests {
     fn handle_two_char_tokens() {
         let source = "! != == >=";
         let mut scanner = Scanner::new(source);
-        scanner.scan_tokens();
+        scanner.scan_tokens().unwrap();
 
         assert_eq!(scanner.tokens.len(), 5);
         assert_eq!(scanner.tokens[0].token_type, Bang);
@@ -306,5 +328,40 @@ mod tests {
         assert_eq!(scanner.tokens[4].token_type, Eof);
     }
 
-}
+    #[test]
+    fn handle_string_lit() {
+        let source = r#""ABC""#;
+        let mut scanner = Scanner::new(source);
+        scanner.scan_tokens().unwrap();
+        assert_eq!(scanner.tokens.len(), 2);
+        assert_eq!(scanner.tokens[0].token_type, StringLit);
+        match scanner.tokens[0].literal.as_ref().unwrap() {
+            StringValue(val) => assert_eq!(val, "ABC"),
+            _ => panic!("Incorrect literal type"),
+        }
+    }
 
+    #[test]
+    fn handle_string_lit_unterminated() {
+        let source = r#""ABC"#;
+        let mut scanner = Scanner::new(source);
+        let result = scanner.scan_tokens();
+        match result {
+            Err(_) => (),
+            _ => panic!("Should have failed"),
+        }
+    }
+
+    #[test]
+    fn handle_string_lit_multiline() {
+        let source = "\"ABC\ndef\"";
+        let mut scanner = Scanner::new(source);
+        scanner.scan_tokens().unwrap();
+        assert_eq!(scanner.tokens.len(), 2);
+        assert_eq!(scanner.tokens[0].token_type, StringLit);
+        match scanner.tokens[0].literal.as_ref().unwrap() {
+            StringValue(val) => assert_eq!(val, "ABC\ndef"),
+            _ => panic!("Incorrect literal type"),
+        }
+    }
+}
