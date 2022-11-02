@@ -66,7 +66,7 @@ pub enum Expr {
     },
 }
 
-impl  Expr {
+impl Expr {
     pub fn to_string(&self) -> String {
         match self {
             Expr::Binary {
