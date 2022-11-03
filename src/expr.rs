@@ -1,6 +1,7 @@
-use crate::scanner::{Token, TokenType};
 use crate::scanner;
+use crate::scanner::{Token, TokenType};
 
+#[derive(Debug, Clone, PartialEq)]
 pub enum LiteralValue {
     Number(f32),
     StringValue(String),
@@ -8,6 +9,7 @@ pub enum LiteralValue {
     False,
     Nil,
 }
+use LiteralValue::*;
 
 fn unwrap_as_f32(literal: Option<scanner::LiteralValue>) -> f32 {
     match literal {
@@ -36,6 +38,16 @@ impl LiteralValue {
         }
     }
 
+    pub fn to_type(&self) -> &str {
+        match self {
+            LiteralValue::Number(_) => "Number",
+            LiteralValue::StringValue(_) => "String",
+            LiteralValue::True => "Boolean",
+            LiteralValue::False => "Boolean",
+            LiteralValue::Nil => "nil",
+        }
+    }
+
     pub fn from_token(token: Token) -> Self {
         match token.token_type {
             TokenType::Number => Self::Number(unwrap_as_f32(token.literal)),
@@ -44,6 +56,36 @@ impl LiteralValue {
             TokenType::True => Self::True,
             TokenType::Nil => Self::Nil,
             _ => panic!("Could not create LiteralValue from {:?}", token),
+        }
+    }
+
+    pub fn from_bool(b: bool) -> Self {
+        if b {
+            True
+        } else {
+            False
+        }
+    }
+
+    pub fn is_falsy(&self) -> LiteralValue {
+        match self {
+            Number(x) => {
+                if *x == 0.0 as f32 {
+                    True
+                } else {
+                    False
+                }
+            }
+            StringValue(s) => {
+                if s.len() == 0 {
+                    True
+                } else {
+                    False
+                }
+            }
+            True => False,
+            False => True,
+            Nil => True,
         }
     }
 }
@@ -85,6 +127,80 @@ impl Expr {
                 let operator_str = operator.lexeme.clone();
                 let right_str = (*right).to_string();
                 format!("({} {})", operator_str, right_str)
+            }
+        }
+    }
+
+    pub fn evaluate(&self) -> Result<LiteralValue, String> {
+        match self {
+            Expr::Literal { value } => Ok((*value).clone()),
+            Expr::Grouping { expression } => expression.evaluate(),
+            Expr::Unary { operator, right } => {
+                let right = right.evaluate()?;
+
+                match (&right, operator.token_type) {
+                    (Number(x), TokenType::Minus) => Ok(Number(-x)),
+                    (_, TokenType::Minus) => {
+                        Err(format!("Minus not implemented for {}", right.to_type()))
+                    }
+                    (any, TokenType::Bang) => Ok(any.is_falsy()),
+                    (_, ttype) => Err(format!("{} is not a valid unary operator", ttype)),
+                }
+            }
+            Expr::Binary {
+                left,
+                operator,
+                right,
+            } => {
+                let left = left.evaluate()?;
+                let right = right.evaluate()?;
+
+                match (&left, operator.token_type, &right) {
+                    (Number(x), TokenType::Plus, Number(y)) => Ok(Number(x + y)),
+                    (Number(x), TokenType::Minus, Number(y)) => Ok(Number(x - y)),
+                    (Number(x), TokenType::Star, Number(y)) => Ok(Number(x * y)),
+                    (Number(x), TokenType::Slash, Number(y)) => Ok(Number(x / y)),
+                    (Number(x), TokenType::Greater, Number(y)) => {
+                        Ok(LiteralValue::from_bool(x > y))
+                    }
+                    (Number(x), TokenType::GreaterEqual, Number(y)) => {
+                        Ok(LiteralValue::from_bool(x >= y))
+                    }
+                    (Number(x), TokenType::Less, Number(y)) => Ok(LiteralValue::from_bool(x < y)),
+                    (Number(x), TokenType::LessEqual, Number(y)) => {
+                        Ok(LiteralValue::from_bool(x <= y))
+                    }
+
+                    (StringValue(_), op, Number(_)) => {
+                        Err(format!("{} is not defined for string and number", op))
+                    }
+                    (Number(_), op, StringValue(_)) => {
+                        Err(format!("{} is not defined for string and number", op))
+                    }
+
+                    (StringValue(s1), TokenType::Plus, StringValue(s2)) => {
+                        Ok(StringValue(format!("{}{}", s1, s2)))
+                    }
+
+                    (x, TokenType::BangEqual, y) => Ok(LiteralValue::from_bool(x != y)),
+                    (x, TokenType::EqualEqual, y) => Ok(LiteralValue::from_bool(x == y)),
+                    (StringValue(s1), TokenType::Greater, StringValue(s2)) => {
+                        Ok(LiteralValue::from_bool(s1 > s2))
+                    }
+                    (StringValue(s1), TokenType::GreaterEqual, StringValue(s2)) => {
+                        Ok(LiteralValue::from_bool(s1 >= s2))
+                    }
+                    (StringValue(s1), TokenType::Less, StringValue(s2)) => {
+                        Ok(LiteralValue::from_bool(s1 < s2))
+                    }
+                    (StringValue(s1), TokenType::LessEqual, StringValue(s2)) => {
+                        Ok(LiteralValue::from_bool(s1 <= s2))
+                    }
+                    (x, ttype, y) => Err(format!(
+                        "{} is not implemented for operands {:?} and {:?}",
+                        ttype, x, y
+                    )),
+                }
             }
         }
     }
