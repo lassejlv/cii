@@ -1,23 +1,10 @@
-use crate::scanner::{Token, TokenType, TokenType::*};
-
 use crate::expr::{Expr, Expr::*, LiteralValue};
+use crate::scanner::{Token, TokenType, TokenType::*};
+use crate::stmt::Stmt;
 
 pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
-}
-
-macro_rules! match_tokens {
-    ($parser:ident, $($token:ident),+) => {
-        {
-            let mut result = false;
-            {
-            $( result |= $parser.match_token($token); )*
-            }
-
-            result
-        }
-    }
 }
 
 impl Parser {
@@ -28,8 +15,43 @@ impl Parser {
         }
     }
 
-    pub fn parse(&mut self) -> Result<Expr, String> {
-        self.expression()
+    pub fn parse(&mut self) -> Result<Vec<Stmt>, String> {
+        let mut stmts = vec![];
+        let mut errs = vec![];
+
+        while !self.is_at_end() {
+            let stmt = self.statement();
+            match stmt {
+                Ok(s) => stmts.push(s),
+                Err(msg) => errs.push(msg),
+            }
+        }
+
+        if errs.len() == 0 {
+            Ok(stmts)
+        } else {
+            Err(errs.join("\n"))
+        }
+    }
+
+    fn statement(&mut self) -> Result<Stmt, String> {
+        if self.match_token(Print) {
+            self.print_statement()
+        } else {
+            self.expression_statement()
+        }
+    }
+
+    fn print_statement(&mut self) -> Result<Stmt, String> {
+        let value = self.expression()?;
+        self.consume(Semicolon, "Expected ';' after value.")?;
+        Ok(Stmt::Print { expression: value })
+    }
+
+    fn expression_statement(&mut self) -> Result<Stmt, String> {
+        let expr = self.expression()?;
+        self.consume(Semicolon, "Expected ';' after expression.")?;
+        Ok(Stmt::Expression { expression: expr })
     }
 
     fn expression(&mut self) -> Result<Expr, String> {
