@@ -373,13 +373,6 @@ impl Token {
     }
 }
 
-/*
-var test = 0.1;
-var test2 = test + 0.2;
-
-
-*/
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -497,7 +490,7 @@ mod tests {
         scanner.scan_tokens().unwrap();
 
         assert_eq!(scanner.tokens.len(), 13);
-        
+
         assert_eq!(scanner.tokens[0].token_type, Var);
         assert_eq!(scanner.tokens[1].token_type, Identifier);
         assert_eq!(scanner.tokens[2].token_type, Equal);

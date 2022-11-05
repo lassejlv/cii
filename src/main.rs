@@ -3,10 +3,10 @@ mod interpreter;
 mod parser;
 mod scanner;
 mod stmt;
+mod environment;
 use crate::interpreter::*;
 use crate::parser::*;
 use crate::scanner::*;
-use crate::stmt::Stmt::*;
 
 use std::env;
 use std::fs;
