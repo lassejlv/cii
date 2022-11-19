@@ -17,14 +17,14 @@ impl Interpreter {
         for stmt in stmts {
             match stmt {
                 Stmt::Expression { expression } => {
-                    expression.evaluate(&self.environment)?;
+                    expression.evaluate(&mut self.environment)?;
                 }
                 Stmt::Print { expression } => {
-                    let value = expression.evaluate(&self.environment)?;
+                    let value = expression.evaluate(&mut self.environment)?;
                     println!("{value:?}");
                 }
                 Stmt::Var { name, initializer } => {
-                    let value = initializer.evaluate(&self.environment)?;
+                    let value = initializer.evaluate(&mut self.environment)?;
 
                     self.environment.define(name.lexeme, value);
                 }
