@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use crate::expr::LiteralValue;
 
-pub struct Environment {
-    values: HashMap<String, LiteralValue>,
+pub struct Environment<'a> {
+    values: HashMap<&'a str, LiteralValue<'a>>,
 }
 
 
-impl Environment {
+impl<'a> Environment<'a> {
     pub fn new() -> Self {
         Self {
             values: HashMap::new()
@@ -14,11 +14,11 @@ impl Environment {
     }
 
 
-    pub fn define(&mut self, name: String, value: LiteralValue) {
+    pub fn define(&mut self, name: &'a str, value: LiteralValue<'a>) {
         self.values.insert(name, value);
     }
 
-    pub fn get(&self, name: &str) -> Option<&LiteralValue> {
+    pub fn get(&self, name: &str) -> Option<&LiteralValue<'a>> {
         self.values.get(name)
     }
 }

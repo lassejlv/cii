@@ -23,7 +23,8 @@ fn run_file(path: &str) -> Result<(), String> {
 
 fn run(interpreter: &mut Interpreter, contents: &str) -> Result<(), String> {
     let mut scanner = Scanner::new(contents);
-    let tokens = scanner.scan_tokens()?;
+    scanner.scan_tokens()?;
+    let tokens = scanner.tokens;
 
     let mut parser = Parser::new(tokens);
     let stmts = parser.parse()?;
@@ -33,6 +34,7 @@ fn run(interpreter: &mut Interpreter, contents: &str) -> Result<(), String> {
 
 fn run_prompt() -> Result<(), String> {
     let mut interpreter = Interpreter::new();
+    let mut buffer = String::new();
     loop {
         print!("> ");
         match io::stdout().flush() {
@@ -40,20 +42,21 @@ fn run_prompt() -> Result<(), String> {
             Err(_) => return Err("Could not flush stdout".to_string()),
         }
 
-        let mut buffer = String::new();
         let stdin = io::stdin();
         let mut handle = stdin.lock();
+        let current_length = buffer.len();
         match handle.read_line(&mut buffer) {
             Ok(n) => {
-                if n <= 1 {
+                if n < 1 {
+                    println!("");
                     return Ok(());
                 }
             }
             Err(_) => return Err("Couldnt read line".to_string()),
         }
-
-        println!("ECHO: {}", buffer);
-        match run(&mut interpreter, &buffer) {
+        
+        println!("ECHO: {}", &buffer[current_length..]);
+        match run(&mut interpreter, &buffer[current_length..]) {
             Ok(_) => (),
             Err(msg) => println!("{}", msg),
         }

@@ -3,9 +3,9 @@ use crate::scanner;
 use crate::scanner::{Token, TokenType};
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum LiteralValue {
+pub enum LiteralValue<'a> {
     Number(f32),
-    StringValue(String),
+    StringValue(Vec<&'a str>),
     True,
     False,
     Nil,
@@ -20,19 +20,25 @@ fn unwrap_as_f32(literal: Option<scanner::LiteralValue>) -> f32 {
     }
 }
 
-fn unwrap_as_string(literal: Option<scanner::LiteralValue>) -> String {
+fn unwrap_as_string(literal: Option<scanner::LiteralValue>) -> &str {
     match literal {
-        Some(scanner::LiteralValue::StringValue(s)) => s.clone(),
-        Some(scanner::LiteralValue::IdentifierVal(s)) => s.clone(),
+        Some(scanner::LiteralValue::StringValue(s)) => s,
+        Some(scanner::LiteralValue::IdentifierVal(s)) => s,
         _ => panic!("Could not unwrap as string"),
     }
 }
 
-impl LiteralValue {
+impl<'a> LiteralValue<'a> {
     pub fn to_string(&self) -> String {
         match self {
             LiteralValue::Number(x) => x.to_string(),
-            LiteralValue::StringValue(x) => x.clone(),
+            LiteralValue::StringValue(x) => {
+                let mut s = String::new();
+                for substring in x {
+                    s.push_str(substring);
+                }
+                s
+            }
             LiteralValue::True => "true".to_string(),
             LiteralValue::False => "false".to_string(),
             LiteralValue::Nil => "nil".to_string(),
@@ -49,10 +55,10 @@ impl LiteralValue {
         }
     }
 
-    pub fn from_token(token: Token) -> Self {
+    pub fn from_token(token: Token<'a>) -> Self {
         match token.token_type {
             TokenType::Number => Self::Number(unwrap_as_f32(token.literal)),
-            TokenType::StringLit => Self::StringValue(unwrap_as_string(token.literal)),
+            TokenType::StringLit => Self::StringValue(vec![unwrap_as_string(token.literal)]),
             TokenType::False => Self::False,
             TokenType::True => Self::True,
             TokenType::Nil => Self::Nil,
@@ -68,7 +74,7 @@ impl LiteralValue {
         }
     }
 
-    pub fn is_falsy(&self) -> LiteralValue {
+    pub fn is_falsy(&self) -> LiteralValue<'a> {
         match self {
             Number(x) => {
                 if *x == 0.0 as f32 {
@@ -92,32 +98,32 @@ impl LiteralValue {
 }
 
 #[derive(Debug)]
-pub enum Expr {
+pub enum Expr<'a> {
     Assign {
-        name: Token,
-        value: Box<Expr>,
+        name: Token<'a>,
+        value: Box<Expr<'a>>,
     },
     Binary {
-        left: Box<Expr>,
-        operator: Token,
-        right: Box<Expr>,
+        left: Box<Expr<'a>>,
+        operator: Token<'a>,
+        right: Box<Expr<'a>>,
     },
     Grouping {
-        expression: Box<Expr>,
+        expression: Box<Expr<'a>>,
     },
     Literal {
-        value: LiteralValue,
+        value: LiteralValue<'a>,
     },
     Unary {
-        operator: Token,
-        right: Box<Expr>,
+        operator: Token<'a>,
+        right: Box<Expr<'a>>,
     },
     Variable {
-        name: Token,
+        name: Token<'a>,
     },
 }
 
-impl Expr {
+impl<'a> Expr<'a> {
     pub fn to_string(&self) -> String {
         match self {
             Expr::Assign { name, value } => format!("({name:?} = {}", value.to_string()),
@@ -142,7 +148,7 @@ impl Expr {
         }
     }
 
-    pub fn evaluate(&self, environment: &mut Environment) -> Result<LiteralValue, String> {
+    pub fn evaluate(&'a self, environment: &mut Environment<'a>) -> Result<LiteralValue<'a>, String> {
         match self {
             Expr::Assign { name, value } => {
                 let get_value = environment.get(&name.lexeme);
@@ -205,7 +211,10 @@ impl Expr {
                     }
 
                     (StringValue(s1), TokenType::Plus, StringValue(s2)) => {
-                        Ok(StringValue(format!("{}{}", s1, s2)))
+                        let mut strings = vec![];
+                        strings.extend(s1);
+                        strings.extend(s2);
+                        Ok(StringValue(strings))
                     }
 
                     (x, TokenType::BangEqual, y) => Ok(LiteralValue::from_bool(x != y)),
@@ -245,7 +254,7 @@ mod tests {
     fn pretty_print_ast() {
         let minus_token = Token {
             token_type: TokenType::Minus,
-            lexeme: "-".to_string(),
+            lexeme: "-",
             literal: None,
             line_number: 0,
         };
@@ -259,7 +268,7 @@ mod tests {
         };
         let multi = Token {
             token_type: TokenType::Star,
-            lexeme: "*".to_string(),
+            lexeme: "*",
             literal: None,
             line_number: 0,
         };
