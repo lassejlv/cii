@@ -35,9 +35,9 @@ fn get_keywords_hashmap() -> HashMap<&'static str, TokenType> {
     ])
 }
 
-pub struct Scanner {
-    source: String,
-    tokens: Vec<Token>,
+pub struct Scanner<'a> {
+    source: &'a str,
+    pub tokens: Vec<Token<'a>>,
     start: usize,
     current: usize,
     line: usize,
@@ -45,10 +45,10 @@ pub struct Scanner {
     keywords: HashMap<&'static str, TokenType>,
 }
 
-impl Scanner {
-    pub fn new(source: &str) -> Self {
+impl<'a> Scanner<'a> {
+    pub fn new(source: &'a str) -> Self {
         Self {
-            source: source.to_string(),
+            source: source,
             tokens: vec![],
             start: 0,
             current: 0,
@@ -57,7 +57,7 @@ impl Scanner {
         }
     }
 
-    pub fn scan_tokens(self: &mut Self) -> Result<Vec<Token>, String> {
+    pub fn scan_tokens(self: &mut Self) -> Result<(), String> {
         let mut errors = vec![];
         while !self.is_at_end() {
             self.start = self.current;
@@ -69,7 +69,7 @@ impl Scanner {
 
         self.tokens.push(Token {
             token_type: Eof,
-            lexeme: "".to_string(),
+            lexeme: "",
             literal: None,
             line_number: self.line,
         });
@@ -83,7 +83,7 @@ impl Scanner {
             return Err(joined);
         }
 
-        Ok(self.tokens.clone())
+        Ok(())
     }
 
     // var test = 0.01;
@@ -231,7 +231,7 @@ impl Scanner {
 
         let value = &self.source[self.start + 1..self.current - 1];
 
-        self.add_token_lit(StringLit, Some(StringValue(value.to_string())));
+        self.add_token_lit(StringLit, Some(StringValue(value)));
 
         Ok(())
     }
@@ -267,7 +267,7 @@ impl Scanner {
     }
 
     fn add_token_lit(self: &mut Self, token_type: TokenType, literal: Option<LiteralValue>) {
-        let text = self.source[self.start..self.current].to_string();
+        let text = &self.source[self.start..self.current];
 
         self.tokens.push(Token {
             token_type: token_type,
@@ -337,26 +337,26 @@ impl std::fmt::Display for TokenType {
 }
 
 #[derive(Debug, Clone)]
-pub enum LiteralValue {
+pub enum LiteralValue<'a> {
     IntValue(i64),
     FValue(f64),
-    StringValue(String),
-    IdentifierVal(String),
+    StringValue(&'a str),
+    IdentifierVal(&'a str),
 }
 use LiteralValue::*;
 
 #[derive(Debug, Clone)]
-pub struct Token {
+pub struct Token<'a> {
     pub token_type: TokenType,
-    pub lexeme: String,
-    pub literal: Option<LiteralValue>,
+    pub lexeme: &'a str,
+    pub literal: Option<LiteralValue<'a>>,
     pub line_number: usize,
 }
 
-impl Token {
+impl<'a> Token<'a> {
     pub fn new(
         token_type: TokenType,
-        lexeme: String,
+        lexeme: &'a str,
         literal: Option<LiteralValue>,
         line_number: usize,
     ) -> Self {
@@ -415,7 +415,7 @@ mod tests {
         assert_eq!(scanner.tokens.len(), 2);
         assert_eq!(scanner.tokens[0].token_type, StringLit);
         match scanner.tokens[0].literal.as_ref().unwrap() {
-            StringValue(val) => assert_eq!(val, "ABC"),
+            StringValue(val) => assert_eq!(val, &"ABC"),
             _ => panic!("Incorrect literal type"),
         }
     }
@@ -439,7 +439,7 @@ mod tests {
         assert_eq!(scanner.tokens.len(), 2);
         assert_eq!(scanner.tokens[0].token_type, StringLit);
         match scanner.tokens[0].literal.as_ref().unwrap() {
-            StringValue(val) => assert_eq!(val, "ABC\ndef"),
+            StringValue(val) => assert_eq!(val, &"ABC\ndef"),
             _ => panic!("Incorrect literal type"),
         }
     }
