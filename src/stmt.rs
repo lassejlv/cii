@@ -3,10 +3,24 @@ use crate::scanner::Token;
 
 #[derive(Debug)]
 pub enum Stmt {
-    Expression { expression: Expr },
-    Print { expression: Expr },
-    Var { name: Token, initializer: Expr },
-    Block { statements: Vec<Stmt> },
+    Expression {
+        expression: Expr,
+    },
+    Print {
+        expression: Expr,
+    },
+    Var {
+        name: Token,
+        initializer: Expr,
+    },
+    Block {
+        statements: Vec<Stmt>,
+    },
+    IfStmt {
+        predicate: Expr,
+        then: Box<Stmt>,
+        els: Option<Box<Stmt>>,
+    },
 }
 
 impl Stmt {
@@ -18,8 +32,12 @@ impl Stmt {
             Var { name, initializer } => format!("(var {})", name.lexeme),
             Block { statements } => format!(
                 "(block {})",
-                statements.into_iter().map(|stmt| stmt.to_string())
-                    .collect::<String>()),
+                statements
+                    .into_iter()
+                    .map(|stmt| stmt.to_string())
+                    .collect::<String>()
+            ),
+            IfStmt { predicate, then, els } => todo!(),
         }
     }
 }

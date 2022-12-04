@@ -89,6 +89,28 @@ impl LiteralValue {
             Nil => True,
         }
     }
+
+    pub fn is_truthy(&self) -> LiteralValue {
+        match self {
+            Number(x) => {
+                if *x == 0.0 as f32 {
+                    False
+                } else {
+                    True
+                }
+            }
+            StringValue(s) => {
+                if s.len() == 0 {
+                    False
+                } else {
+                    True
+                }
+            }
+            True => True,
+            False => False,
+            Nil => False,
+        }
+    }
 }
 
 #[derive(Debug)]
