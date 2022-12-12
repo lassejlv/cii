@@ -78,9 +78,20 @@ impl Parser {
             self.block_statement()
         } else if self.match_token(If) {
             self.if_statement()
+        } else if self.match_token(While) {
+            self.while_statement()
         } else {
             self.expression_statement()
         }
+    }
+
+    fn while_statement(&mut self) -> Result<Stmt, String> {
+        self.consume(LeftParen, "Expected '(' after 'while'")?;
+        let condition = self.expression()?;
+        self.consume(RightParen, "Expected ')' after condition.")?;
+        let body = self.statement()?;
+
+        Ok(Stmt::WhileStmt { condition, body: Box::new(body) })
     }
 
     fn if_statement(&mut self) -> Result<Stmt, String> {
@@ -108,10 +119,10 @@ impl Parser {
 
         while !self.check(RightBrace) && !self.is_at_end() {
             let decl = self.declaration()?;
-            statements.push(decl);
+            statements.push(Box::new(decl));
         }
 
-        self.consume(RightBrace, "Expected '}' after a block");
+        self.consume(RightBrace, "Expected '}' after a block")?;
         Ok(Stmt::Block { statements })
     }
 
@@ -132,10 +143,9 @@ impl Parser {
     }
 
     fn assignment(&mut self) -> Result<Expr, String> {
-        let expr = self.equality()?;
+        let expr = self.or()?;
 
         if self.match_token(Equal) {
-            let equals = self.previous();
             let value = self.assignment()?;
 
             match expr {
@@ -148,6 +158,39 @@ impl Parser {
         } else {
             Ok(expr)
         }
+    }
+
+    fn or(&mut self) -> Result<Expr, String> {
+        let mut expr = self.and()?;
+
+        while self.match_token(Or) {
+            let operator = self.previous();
+            let right = self.and()?;
+
+            expr = Logical {
+                left: Box::new(expr),
+                operator: operator,
+                right: Box::new(right),
+            };
+        }
+
+        Ok(expr)
+    }
+
+    fn and(&mut self) -> Result<Expr, String> {
+        let mut expr = self.equality()?;
+
+        while self.match_token(And) {
+            let operator = self.previous();
+            let right = self.equality()?;
+            expr = Logical {
+                left: Box::new(expr),
+                operator: operator,
+                right: Box::new(right),
+            };
+        }
+
+        Ok(expr)
     }
 
     fn equality(&mut self) -> Result<Expr, String> {

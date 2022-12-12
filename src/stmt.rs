@@ -14,13 +14,17 @@ pub enum Stmt {
         initializer: Expr,
     },
     Block {
-        statements: Vec<Stmt>,
+        statements: Vec<Box<Stmt>>,
     },
     IfStmt {
         predicate: Expr,
         then: Box<Stmt>,
         els: Option<Box<Stmt>>,
     },
+    WhileStmt {
+        condition: Expr,
+        body: Box<Stmt>,
+    }
 }
 
 impl Stmt {
@@ -38,6 +42,7 @@ impl Stmt {
                     .collect::<String>()
             ),
             IfStmt { predicate, then, els } => todo!(),
+            WhileStmt { condition, body } => todo!(),
         }
     }
 }

@@ -27,7 +27,7 @@ fn run(interpreter: &mut Interpreter, contents: &str) -> Result<(), String> {
 
     let mut parser = Parser::new(tokens);
     let stmts = parser.parse()?;
-    interpreter.interpret(stmts)?;
+    interpreter.interpret(stmts.iter().collect())?;
     return Ok(());
 }
 
