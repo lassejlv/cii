@@ -49,6 +49,6 @@ mod tests {
     use super::*;
     #[test]
     fn try_init() {
-        let environment = Environment::new();
+        let _environment = Environment::new();
     }
 }

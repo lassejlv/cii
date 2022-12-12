@@ -28,12 +28,13 @@ pub enum Stmt {
 }
 
 impl Stmt {
+    #[allow(dead_code)]
     pub fn to_string(&self) -> String {
         use Stmt::*;
         match self {
             Expression { expression } => expression.to_string(),
             Print { expression } => format!("(print {})", expression.to_string()),
-            Var { name, initializer } => format!("(var {})", name.lexeme),
+            Var { name, initializer: _ } => format!("(var {})", name.lexeme),
             Block { statements } => format!(
                 "(block {})",
                 statements
@@ -41,8 +42,8 @@ impl Stmt {
                     .map(|stmt| stmt.to_string())
                     .collect::<String>()
             ),
-            IfStmt { predicate, then, els } => todo!(),
-            WhileStmt { condition, body } => todo!(),
+            IfStmt { predicate: _, then: _, els: _ } => todo!(),
+            WhileStmt { condition: _ , body: _ } => todo!(),
         }
     }
 }
