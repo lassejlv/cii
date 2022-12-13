@@ -24,7 +24,16 @@ pub enum Stmt {
     WhileStmt {
         condition: Expr,
         body: Box<Stmt>,
-    }
+    },
+    // ForStmt {
+    //     var_decl: Option<Box<Stmt>>,
+    //     expr_stmt: Option<Box<Stmt>>,
+
+    //     condition: Option<Expr>,
+    //     incrementer: Option<Expr>,
+
+    //     body: Box<Stmt>,
+    // },
 }
 
 impl Stmt {
@@ -34,7 +43,10 @@ impl Stmt {
         match self {
             Expression { expression } => expression.to_string(),
             Print { expression } => format!("(print {})", expression.to_string()),
-            Var { name, initializer: _ } => format!("(var {})", name.lexeme),
+            Var {
+                name,
+                initializer: _,
+            } => format!("(var {})", name.lexeme),
             Block { statements } => format!(
                 "(block {})",
                 statements
@@ -42,8 +54,15 @@ impl Stmt {
                     .map(|stmt| stmt.to_string())
                     .collect::<String>()
             ),
-            IfStmt { predicate: _, then: _, els: _ } => todo!(),
-            WhileStmt { condition: _ , body: _ } => todo!(),
+            IfStmt {
+                predicate: _,
+                then: _,
+                els: _,
+            } => todo!(),
+            WhileStmt {
+                condition: _,
+                body: _,
+            } => todo!(),
         }
     }
 }

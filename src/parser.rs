@@ -80,9 +80,81 @@ impl Parser {
             self.if_statement()
         } else if self.match_token(While) {
             self.while_statement()
+        } else if self.match_token(For) {
+            self.for_statement()
         } else {
             self.expression_statement()
         }
+    }
+
+    fn for_statement(&mut self) -> Result<Stmt, String> {
+        // for v
+        //       ( SMTH ; SMTH ; SMTH )
+        self.consume(LeftParen, "Expected '(' after 'for'.")?;
+
+        // Consumes "SMTH ;"
+        let initializer;
+        if self.match_token(Semicolon) {
+            initializer = None;
+        } else if self.match_token(Var) {
+            let var_decl = self.var_declaration()?;
+            initializer = Some(var_decl);
+        } else {
+            let expr = self.expression_statement()?;
+            initializer = Some(expr);
+        }
+
+        // Consumes "SMTH? ;"
+        let condition;
+        if !self.check(Semicolon) {
+            let expr = self.expression()?;
+            condition = Some(expr);
+        } else {
+            condition = None;
+        }
+        self.consume(Semicolon, "Expected ';' after loop condition.")?;
+
+        let increment;
+        if !self.check(RightParen) {
+            let expr = self.expression()?;
+            increment = Some(expr);
+        } else {
+            increment = None;
+        }
+        self.consume(RightParen, "Expected ')' after for clauses.")?;
+
+        let mut body = self.statement()?;
+
+        if let Some(incr) = increment {
+            body = Stmt::Block {
+                statements: vec![
+                    Box::new(body),
+                    Box::new(Stmt::Expression { expression: incr }),
+                ],
+            };
+        }
+
+        let cond;
+        match condition {
+            None => {
+                cond = Expr::Literal {
+                    value: LiteralValue::True,
+                }
+            }
+            Some(c) => cond = c,
+        }
+        body = Stmt::WhileStmt {
+            condition: cond,
+            body: Box::new(body),
+        };
+
+        if let Some(init) = initializer {
+            body = Stmt::Block {
+                statements: vec![Box::new(init), Box::new(body)],
+            };
+        }
+
+        Ok(body)
     }
 
     fn while_statement(&mut self) -> Result<Stmt, String> {
@@ -91,7 +163,10 @@ impl Parser {
         self.consume(RightParen, "Expected ')' after condition.")?;
         let body = self.statement()?;
 
-        Ok(Stmt::WhileStmt { condition, body: Box::new(body) })
+        Ok(Stmt::WhileStmt {
+            condition,
+            body: Box::new(body),
+        })
     }
 
     fn if_statement(&mut self) -> Result<Stmt, String> {

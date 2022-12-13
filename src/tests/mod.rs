@@ -63,4 +63,34 @@ mod tests {
         assert_eq!(lines[8], "3628800");
         assert_eq!(lines[9], "3628800");
     }
+
+    #[test]
+    fn interpret_for_loop() {
+        let output =
+            Command::new("cargo")
+            .arg("run")
+            .arg("./src/tests/cases/forloop.jlox")
+            .output()
+            .unwrap();
+        let lines = std::str::from_utf8(output.stdout.as_slice())
+            .unwrap()
+            .split("\n")
+            .collect::<Vec<&str>>();
+
+        let mut fibo = vec![];
+        let mut a = 0;
+        let mut b = 1;
+        let mut temp;
+        for _i in 0..21 {
+            fibo.push(a);
+            temp = b;
+            b = a + b;
+            a = temp;
+        }
+
+        assert_eq!(lines.len(), fibo.len() + 1);
+        for i in 0..fibo.len() {
+            assert_eq!(lines[i], fibo[i].to_string());
+        }
+    }
 }
