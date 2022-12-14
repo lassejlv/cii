@@ -1,17 +1,39 @@
 use crate::environment::Environment;
 use crate::expr::LiteralValue;
 use crate::stmt::Stmt;
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 pub struct Interpreter {
+    // globals: Environment,
     environment: Rc<RefCell<Environment>>,
+}
+
+fn clock_impl(_args: &Vec<LiteralValue>) -> LiteralValue {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .expect("Could not get system time")
+        .as_millis();
+
+    LiteralValue::Number(now as f64 / 1000.0)
 }
 
 impl Interpreter {
     pub fn new() -> Self {
+        let mut globals = Environment::new();
+        globals.define(
+            "clock".to_string(),
+            LiteralValue::Callable {
+                name: "clock".to_string(),
+                arity: 0,
+                fun: Rc::new(clock_impl),
+            },
+        );
+
         Self {
-            environment: Rc::new(RefCell::new(Environment::new())),
+            // globals,
+            //environment: Rc::new(RefCell::new(Environment::new())),
+            environment: Rc::new(RefCell::new(globals)),
         }
     }
 
@@ -28,8 +50,9 @@ impl Interpreter {
                 Stmt::Var { name, initializer } => {
                     let value = initializer.evaluate(self.environment.clone())?;
 
-                    
-                    self.environment.borrow_mut().define(name.lexeme.clone(), value);
+                    self.environment
+                        .borrow_mut()
+                        .define(name.lexeme.clone(), value);
                 }
                 Stmt::Block { statements } => {
                     let mut new_environment = Environment::new();
