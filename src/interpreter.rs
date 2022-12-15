@@ -6,7 +6,7 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 pub struct Interpreter {
-    // globals: Environment,
+    specials: Rc<RefCell<Environment>>,
     environment: Rc<RefCell<Environment>>,
 }
 
@@ -21,8 +21,8 @@ fn clock_impl(_env: Rc<RefCell<Environment>>, _args: &Vec<LiteralValue>) -> Lite
 
 impl Interpreter {
     pub fn new() -> Self {
-        let mut globals = Environment::new();
-        globals.define(
+        let mut env = Environment::new();
+        env.define(
             "clock".to_string(),
             LiteralValue::Callable {
                 name: "clock".to_string(),
@@ -32,9 +32,8 @@ impl Interpreter {
         );
 
         Self {
-            // globals,
-            //environment: Rc::new(RefCell::new(Environment::new())),
-            environment: Rc::new(RefCell::new(globals)),
+            specials: Rc::new(RefCell::new(Environment::new())),
+            environment: Rc::new(RefCell::new(env)),
         }
     }
 
@@ -42,7 +41,10 @@ impl Interpreter {
         let environment = Rc::new(RefCell::new(Environment::new()));
         environment.borrow_mut().enclosing = Some(parent);
 
-        Self { environment }
+        Self {
+            specials: Rc::new(RefCell::new(Environment::new())),
+            environment,
+        }
     }
 
     pub fn interpret(&mut self, stmts: Vec<&Stmt>) -> Result<(), String> {
@@ -118,22 +120,17 @@ impl Interpreter {
                                 .define(params[i].lexeme.clone(), (*arg).clone());
                         }
 
-                        for i in 0..(body.len() - 1) {
-                            clos_int.interpret(vec![body[i].as_ref()]).expect(&format!(
-                                "Evaluating failed inside {}",
-                                name_clone
-                            ));
-                        }
+                        for i in 0..(body.len()) {
+                            clos_int
+                                .interpret(vec![body[i].as_ref()])
+                                .expect(&format!("Evaluating failed inside {}", name_clone));
 
-                        let value;
-                        match body[body.len() - 1].as_ref() {
-                            Stmt::Expression { expression } => {
-                                value = expression.evaluate(clos_int.environment.clone()).unwrap();
+                            if let Some(value) = clos_int.specials.borrow().get("return") {
+                                return value;
                             }
-                            _ => todo!("Didnt get an expression"),
                         }
 
-                        value
+                        LiteralValue::Nil
                     };
 
                     let callable = LiteralValue::Callable {
@@ -142,7 +139,20 @@ impl Interpreter {
                         fun: Rc::new(fun_impl),
                     };
 
-                    self.environment.borrow_mut().define(name.lexeme.clone(), callable);
+                    self.environment
+                        .borrow_mut()
+                        .define(name.lexeme.clone(), callable);
+                }
+                Stmt::ReturnStmt { keyword: _, value } => {
+                    let eval_val;
+                    if let Some(value) = value {
+                        eval_val = value.evaluate(self.environment.clone())?;
+                    } else {
+                        eval_val = LiteralValue::Nil;
+                    }
+                    self.specials
+                        .borrow_mut()
+                        .define_top_level("return".to_string(), eval_val);
                 }
             };
         }
