@@ -177,7 +177,7 @@ pub enum Expr {
     AnonFunction {
         paren: Token,
         arguments: Vec<Token>,
-        body: Vec<Stmt>,
+        body: Vec<Box<Stmt>>,
     },
     Assign {
         name: Token,
@@ -276,8 +276,9 @@ impl Expr {
                 let arity = arguments.len();
                 let env = environment.clone();
                 let arguments: Vec<Token> = arguments.iter().map(|t| (*t).clone()).collect();
-                let body: Vec<Stmt> = body.iter().map(|b| (*b).clone()).collect();
+                let body: Vec<Box<Stmt>> = body.iter().map(|b| (*b).clone()).collect();
                 let paren = paren.clone();
+
                 let fun_impl = move |args: &Vec<LiteralValue>| {
                     let mut anon_int = Interpreter::for_anon(env.clone());
                     for (i, arg) in args.iter().enumerate() {

@@ -272,11 +272,53 @@ impl Parser {
         self.assignment()
     }
 
+    fn function_expression(&mut self) -> Result<Expr, String> {
+        let paren = self.consume(LeftParen, "Expected '(' after anonymous function")?;
+        let mut parameters = vec![];
+        if !self.check(RightParen) {
+            loop {
+                if parameters.len() >= 255 {
+                    let location = self.peek().line_number;
+                    return Err(format!(
+                        "Line {location}: Cant have more than 255 arguments"
+                    ));
+                }
+
+                let param = self.consume(Identifier, "Expected parameter name")?;
+                parameters.push(param);
+
+                if !self.match_token(Comma) {
+                    break;
+                }
+            }
+        }
+        self.consume(
+            RightParen,
+            "Expected ')' after anonymous function parameters",
+        )?;
+
+        self.consume(
+            LeftBrace,
+            "Expected '{' after anonymous function declaration",
+        )?;
+
+        let body = match self.block_statement()? {
+            Stmt::Block { statements } => statements,
+            _ => panic!("Block statement parsed something that was not a block"),
+        };
+
+        Ok(Expr::AnonFunction {
+            paren,
+            arguments: parameters,
+            body,
+        })
+    }
+
     fn assignment(&mut self) -> Result<Expr, String> {
         let expr = self.or()?;
 
         if self.match_token(Equal) {
-            let value = self.assignment()?;
+            let value = self.expression()?;
 
             match expr {
                 Variable { name } => Ok(Assign {
@@ -463,7 +505,11 @@ impl Parser {
                 result = Variable {
                     name: self.previous(),
                 };
-            }
+            },
+            Fun => {
+                self.advance();
+                result = self.function_expression()?;
+            },
             _ => return Err("Expected expression".to_string()),
         }
 
