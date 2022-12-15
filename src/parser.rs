@@ -7,6 +7,11 @@ pub struct Parser {
     current: usize,
 }
 
+#[derive(Debug)]
+enum FunctionKind {
+    Function,
+}
+
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
         Self {
@@ -39,16 +44,50 @@ impl Parser {
 
     fn declaration(&mut self) -> Result<Stmt, String> {
         if self.match_token(Var) {
-            match self.var_declaration() {
-                Ok(stmt) => Ok(stmt),
-                Err(msg) => {
-                    // self.synchronize();
-                    Err(msg)
-                }
-            }
+            self.var_declaration()
+        } else if self.match_token(Fun) {
+            self.function(FunctionKind::Function)
         } else {
             self.statement()
         }
+    }
+
+    fn function(&mut self, kind: FunctionKind) -> Result<Stmt, String> {
+        let name = self.consume(Identifier, &format!("Expected {kind:?} name"))?;
+
+        self.consume(LeftParen, &format!("Expected '(' after {kind:?} name"))?;
+
+        let mut parameters = vec![];
+        if !self.check(RightParen) {
+            loop {
+                if parameters.len() >= 255 {
+                    let location = self.peek().line_number;
+                    return Err(format!(
+                        "Line {location}: Cant have more than 255 arguments"
+                    ));
+                }
+
+                let param = self.consume(Identifier, "Expected parameter name")?;
+                parameters.push(param);
+
+                if !self.match_token(Comma) {
+                    break;
+                }
+            }
+        }
+        self.consume(RightParen, "Expected ')' after parameters.")?;
+
+        self.consume(LeftBrace, &format!("Expected '{{' before {kind:?} body."))?;
+        let body = match self.block_statement()? {
+            Stmt::Block { statements } => statements,
+            _ => panic!("Block statement parsed something that was not a block"),
+        };
+
+        Ok(Stmt::Function {
+            name,
+            params: parameters,
+            body,
+        })
     }
 
     fn var_declaration(&mut self) -> Result<Stmt, String> {
