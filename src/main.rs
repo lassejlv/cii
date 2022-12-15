@@ -1,12 +1,9 @@
-#![feature(unboxed_closures)]
-#![feature(fn_traits)]
 mod expr;
 mod interpreter;
 mod parser;
 mod scanner;
 mod stmt;
 mod environment;
-mod function;
 mod tests;
 use crate::interpreter::*;
 use crate::parser::*;
