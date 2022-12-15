@@ -1,9 +1,12 @@
+#![feature(unboxed_closures)]
+#![feature(fn_traits)]
 mod expr;
 mod interpreter;
 mod parser;
 mod scanner;
 mod stmt;
 mod environment;
+mod function;
 mod tests;
 use crate::interpreter::*;
 use crate::parser::*;
@@ -13,6 +16,9 @@ use std::env;
 use std::fs;
 use std::io::{self, BufRead, Write};
 use std::process::exit;
+
+
+
 
 pub fn run_file(path: &str) -> Result<(), String> {
     let mut interpreter = Interpreter::new();

@@ -6,11 +6,11 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 pub struct Interpreter {
-    specials: Rc<RefCell<Environment>>,
-    environment: Rc<RefCell<Environment>>,
+    pub specials: Rc<RefCell<Environment>>,
+    pub environment: Rc<RefCell<Environment>>,
 }
 
-fn clock_impl(_env: Rc<RefCell<Environment>>, _args: &Vec<LiteralValue>) -> LiteralValue {
+fn clock_impl(_args: &Vec<LiteralValue>) -> LiteralValue {
     let now = std::time::SystemTime::now()
         .duration_since(std::time::SystemTime::UNIX_EPOCH)
         .expect("Could not get system time")
@@ -44,6 +44,15 @@ impl Interpreter {
         Self {
             specials: Rc::new(RefCell::new(Environment::new())),
             environment,
+        }
+    }
+
+    pub fn for_anon(parent: Rc<RefCell<Environment>>) -> Self {
+        let mut env = Environment::new();
+        env.enclosing = Some(parent);
+        Self {
+            specials: Rc::new(RefCell::new(Environment::new())),
+            environment: Rc::new(RefCell::new(env)),
         }
     }
 
@@ -110,8 +119,10 @@ impl Interpreter {
                     let name_clone = name.lexeme.clone();
                     // TODO Make a struct that contains data for evaluation
                     // and which implements Fn
-                    let fun_impl = move |parent_env, args: &Vec<LiteralValue>| {
-                        let mut clos_int = Interpreter::for_closure(parent_env);
+
+                    let parent_env = self.environment.clone();
+                    let fun_impl = move |args: &Vec<LiteralValue>| {
+                        let mut clos_int = Interpreter::for_closure(parent_env.clone());
 
                         for (i, arg) in args.iter().enumerate() {
                             clos_int

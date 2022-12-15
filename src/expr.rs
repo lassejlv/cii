@@ -1,4 +1,5 @@
 use crate::environment::Environment;
+use crate::interpreter::Interpreter;
 use crate::scanner;
 use crate::scanner::{Token, TokenType};
 use std::cell::RefCell;
@@ -14,7 +15,7 @@ pub enum LiteralValue {
     Callable {
         name: String,
         arity: usize,
-        fun: Rc<dyn Fn(Rc<RefCell<Environment>>, &Vec<LiteralValue>) -> LiteralValue>,
+        fun: Rc<dyn Fn(&Vec<LiteralValue>) -> LiteralValue>,
     },
 }
 use LiteralValue::*;
@@ -169,8 +170,15 @@ impl LiteralValue {
     }
 }
 
+use crate::stmt::Stmt;
+
 #[derive(Clone)]
 pub enum Expr {
+    AnonFunction {
+        paren: Token,
+        arguments: Vec<Token>,
+        body: Vec<Stmt>,
+    },
     Assign {
         name: Token,
         value: Box<Expr>,
@@ -215,6 +223,11 @@ impl Expr {
     #[allow(dead_code)]
     pub fn to_string(&self) -> String {
         match self {
+            Expr::AnonFunction {
+                paren: _,
+                arguments,
+                body: _,
+            } => format!("anon/{}", arguments.len()),
             Expr::Assign { name, value } => format!("({name:?} = {}", value.to_string()),
             Expr::Binary {
                 left,
@@ -254,6 +267,46 @@ impl Expr {
 
     pub fn evaluate(&self, environment: Rc<RefCell<Environment>>) -> Result<LiteralValue, String> {
         match self {
+            Expr::AnonFunction {
+                paren,
+                arguments,
+                body,
+            } => {
+                // We have to clone everything so the borrow checker doesnt get scared about us taking ownership of the values in the Expr
+                let arity = arguments.len();
+                let env = environment.clone();
+                let arguments: Vec<Token> = arguments.iter().map(|t| (*t).clone()).collect();
+                let body: Vec<Stmt> = body.iter().map(|b| (*b).clone()).collect();
+                let paren = paren.clone();
+                let fun_impl = move |args: &Vec<LiteralValue>| {
+                    let mut anon_int = Interpreter::for_anon(env.clone());
+                    for (i, arg) in args.iter().enumerate() {
+                        anon_int
+                            .environment
+                            .borrow_mut()
+                            .define(arguments[i].lexeme.clone(), (*arg).clone());
+                    }
+
+                    for i in 0..(body.len()) {
+                        anon_int.interpret(vec![&body[i]]).expect(&format!(
+                            "Evaluating failed inside anon function at line {}",
+                            paren.line_number
+                        ));
+
+                        if let Some(value) = anon_int.specials.borrow().get("return") {
+                            return value;
+                        }
+                    }
+
+                    LiteralValue::Nil
+                };
+
+                Ok(Callable {
+                    name: "anon_function".to_string(),
+                    arity,
+                    fun: Rc::new(fun_impl),
+                })
+            }
             Expr::Assign { name, value } => {
                 let new_value = (*value).evaluate(environment.clone())?;
                 let assign_success = environment
@@ -295,7 +348,7 @@ impl Expr {
                             arg_vals.push(val);
                         }
                         // Apply to arguments
-                        Ok(fun(environment.clone(), &arg_vals))
+                        Ok(fun(&arg_vals))
                     }
                     other => Err(format!("{} is not callable", other.to_type())),
                 }
