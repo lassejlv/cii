@@ -67,6 +67,7 @@ impl Interpreter {
                     println!("{}", value.to_string());
                 }
                 Stmt::Var { name, initializer } => {
+                    println!("{:?}", initializer);
                     let value = initializer.evaluate(self.environment.clone())?;
 
                     self.environment

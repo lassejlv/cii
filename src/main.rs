@@ -4,6 +4,7 @@ mod parser;
 mod scanner;
 mod stmt;
 mod environment;
+mod resolver;
 mod tests;
 use crate::interpreter::*;
 use crate::parser::*;
