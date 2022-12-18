@@ -27,9 +27,28 @@ impl Resolver {
                 name: _,
                 initializer: _,
             } => self.resolve_var(stmt)?,
-            _ => todo!(),
+            Stmt::Function { name, params, body } => self.resolve_function(stmt)?,
+            Stmt::Expression { expression } => self.resolve_expr(expression)?,
+            Stmt::IfStmt {
+                predicate,
+                then,
+                els,
+            } => self.resolve_if_stmt(stmt)?,
+            Stmt::Print { expression } => self.resolve_expr(expression)?,
+            Stmt::ReturnStmt {
+                keyword: _,
+                value: None,
+            } => (),
+            Stmt::ReturnStmt {
+                keyword: _,
+                value: Some(value),
+            } => self.resolve_expr(value)?,
+            Stmt::WhileStmt { condition, body } => {
+                self.resolve_expr(condition)?;
+                self.resolve(body.as_ref())?;
+            }
         }
-        todo!()
+        Ok(())
     }
 
     fn resolve_many(&mut self, stmts: &Vec<Box<Stmt>>) -> Result<(), String> {
@@ -65,6 +84,52 @@ impl Resolver {
         Ok(())
     }
 
+    fn resolve_function(&mut self, stmt: &Stmt) -> Result<(), String> {
+        if let Stmt::Function { name, params, body } = stmt {
+            self.declare(name);
+            self.define(name);
+
+            self.resolve_function_helper(params, body)
+        } else {
+            panic!("Wrong type in resolve function");
+        }
+    }
+
+    fn resolve_if_stmt(&mut self, stmt: &Stmt) -> Result<(), String> {
+        if let Stmt::IfStmt {
+            predicate,
+            then,
+            els,
+        } = stmt
+        {
+            self.resolve_expr(predicate)?;
+            self.resolve(then.as_ref())?;
+            if let Some(els) = els {
+                self.resolve(els.as_ref())?;
+            }
+
+            Ok(())
+        } else {
+            panic!("Wrong type in resolve if stmt");
+        }
+    }
+
+    fn resolve_function_helper(
+        &mut self,
+        params: &Vec<Token>,
+        body: &Vec<Box<Stmt>>,
+    ) -> Result<(), String> {
+        self.begin_scope();
+        for param in params {
+            self.declare(param);
+            self.define(param);
+        }
+        self.resolve_many(body)?;
+        self.end_scope();
+
+        Ok(())
+    }
+
     fn begin_scope(&mut self) {
         self.scopes.push(HashMap::new());
     }
@@ -95,7 +160,42 @@ impl Resolver {
         match expr {
             Expr::Variable { name: _ } => self.resolve_expr_var(expr),
             Expr::Assign { name: _, value: _ } => self.resolve_expr_assign(expr),
-            _ => todo!(),
+            Expr::Binary {
+                left,
+                operator: _,
+                right,
+            } => {
+                self.resolve_expr(left)?;
+                self.resolve_expr(right)
+            }
+            Expr::Call {
+                callee,
+                paren: _,
+                arguments,
+            } => {
+                self.resolve_expr(callee.as_ref())?;
+                for arg in arguments {
+                    self.resolve_expr(arg)?;
+                }
+
+                Ok(())
+            }
+            Expr::Grouping { expression } => self.resolve_expr(expression),
+            Expr::Literal { value: _ } => Ok(()),
+            Expr::Logical {
+                left,
+                operator: _,
+                right,
+            } => {
+                self.resolve_expr(left)?;
+                self.resolve_expr(right)
+            }
+            Expr::Unary { operator: _, right } => self.resolve_expr(right),
+            Expr::AnonFunction {
+                paren: _,
+                arguments,
+                body,
+            } => self.resolve_function_helper(arguments, body),
         }
     }
 
