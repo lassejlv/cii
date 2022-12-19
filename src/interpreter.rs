@@ -1,59 +1,50 @@
 use crate::environment::Environment;
+use crate::expr::Expr;
 use crate::expr::LiteralValue;
 use crate::scanner::Token;
 use crate::stmt::Stmt;
-use crate::expr::Expr;
 use std::cell::RefCell;
+use std::collections::HashMap;
 use std::rc::Rc;
 
 pub struct Interpreter {
     pub specials: Rc<RefCell<Environment>>,
     pub environment: Rc<RefCell<Environment>>,
+    pub locals: Rc<RefCell<HashMap<usize, usize>>>,
 }
 
-fn clock_impl(_args: &Vec<LiteralValue>) -> LiteralValue {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::SystemTime::UNIX_EPOCH)
-        .expect("Could not get system time")
-        .as_millis();
-
-    LiteralValue::Number(now as f64 / 1000.0)
-}
 
 impl Interpreter {
     pub fn new() -> Self {
-        let mut env = Environment::new();
-        env.define(
-            "clock".to_string(),
-            LiteralValue::Callable {
-                name: "clock".to_string(),
-                arity: 0,
-                fun: Rc::new(clock_impl),
-            },
-        );
-
         Self {
             specials: Rc::new(RefCell::new(Environment::new())),
-            environment: Rc::new(RefCell::new(env)),
+            environment: Rc::new(RefCell::new(Environment::new())),
+            locals: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 
-    fn for_closure(parent: Rc<RefCell<Environment>>) -> Self {
+    fn for_closure(
+        parent: Rc<RefCell<Environment>>
+    ) -> Self {
         let environment = Rc::new(RefCell::new(Environment::new()));
         environment.borrow_mut().enclosing = Some(parent);
 
         Self {
             specials: Rc::new(RefCell::new(Environment::new())),
             environment,
+            locals: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 
-    pub fn for_anon(parent: Rc<RefCell<Environment>>) -> Self {
+    pub fn for_anon(
+        parent: Rc<RefCell<Environment>>
+    ) -> Self {
         let mut env = Environment::new();
         env.enclosing = Some(parent);
         Self {
             specials: Rc::new(RefCell::new(Environment::new())),
             environment: Rc::new(RefCell::new(env)),
+            locals: Rc::new(RefCell::new(HashMap::new())),
         }
     }
 
@@ -61,6 +52,7 @@ impl Interpreter {
         for stmt in stmts {
             match stmt {
                 Stmt::Expression { expression } => {
+                    let _distance = self.get_distance(&expression);
                     expression.evaluate(self.environment.clone())?;
                 }
                 Stmt::Print { expression } => {
@@ -172,7 +164,14 @@ impl Interpreter {
         Ok(())
     }
 
-    pub fn resolve(&mut self, _expr: &Expr, _steps: usize) -> Result<(), String> {
-        todo!()
+    pub fn resolve(&mut self, expr: &Expr, steps: usize) -> Result<(), String> {
+        let addr = std::ptr::addr_of!(expr) as usize;
+        self.locals.borrow_mut().insert(addr, steps);
+        Ok(())
+    }
+
+    fn get_distance(&self, expr: &Expr) -> Option<usize> {
+        let addr = std::ptr::addr_of!(expr) as usize;
+        self.locals.borrow().get(&addr).copied()
     }
 }

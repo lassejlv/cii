@@ -2,6 +2,8 @@ use crate::environment::Environment;
 use crate::interpreter::Interpreter;
 use crate::scanner;
 use crate::scanner::{Token, TokenType};
+use std::hash::{Hash, Hasher};
+use std::cmp::{PartialEq, Eq};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -218,6 +220,22 @@ impl std::fmt::Debug for Expr {
         write!(f, "{}", self.to_string())
     }
 }
+
+impl Hash for Expr {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        std::ptr::hash(self, state)
+    }
+}
+
+impl PartialEq for Expr {
+    fn eq(&self, other: &Self) -> bool {
+        let ptr = std::ptr::addr_of!(self);
+        let ptr2 = std::ptr::addr_of!(other);
+        ptr == ptr2
+    }
+}
+
+impl Eq for Expr {}
 
 impl Expr {
     #[allow(dead_code)]

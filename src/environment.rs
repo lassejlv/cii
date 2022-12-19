@@ -4,13 +4,38 @@ use std::collections::HashMap;
 use std::rc::Rc;
 
 pub struct Environment {
+    globals: Rc<HashMap<String, LiteralValue>>,
     values: HashMap<String, LiteralValue>,
     pub enclosing: Option<Rc<RefCell<Environment>>>,
+}
+
+fn clock_impl(_args: &Vec<LiteralValue>) -> LiteralValue {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::SystemTime::UNIX_EPOCH)
+        .expect("Could not get system time")
+        .as_millis();
+
+    LiteralValue::Number(now as f64 / 1000.0)
+}
+
+fn get_globals() -> HashMap<String, LiteralValue> {
+    let mut env = HashMap::new();
+    env.insert(
+        "clock".to_string(),
+        LiteralValue::Callable {
+            name: "clock".to_string(),
+            arity: 0,
+            fun: Rc::new(clock_impl),
+        },
+    );
+
+    env
 }
 
 impl Environment {
     pub fn new() -> Self {
         Self {
+            globals: Rc::new(get_globals()),
             values: HashMap::new(),
             enclosing: None,
         }
@@ -33,7 +58,7 @@ impl Environment {
         match (value, &self.enclosing) {
             (Some(val), _) => Some(val.clone()),
             (None, Some(env)) => env.borrow().get(name),
-            (None, None) => None,
+            (None, None) => self.globals.get(name).cloned(),
         }
     }
 

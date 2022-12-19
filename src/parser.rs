@@ -523,7 +523,7 @@ impl Parser {
             let token = self.previous();
             Ok(token)
         } else {
-            Err(msg.to_string())
+            Err(format!("Line {}: {}", token.line_number, msg))
         }
     }
 
