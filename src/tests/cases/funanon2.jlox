@@ -1,3 +1,4 @@
+--- Test
 fun caller(fn) {
   fn();
 }
@@ -7,3 +8,7 @@ var a = 0;
 caller(fun () { a = a + 1; });
 
 print a;
+
+
+--- Expected
+1

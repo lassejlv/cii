@@ -1,4 +1,4 @@
-
+--- Test
 var a = 2;
 
 fun mod() {
@@ -8,3 +8,7 @@ fun mod() {
 mod();
 
 print a;
+
+
+--- Expected
+3

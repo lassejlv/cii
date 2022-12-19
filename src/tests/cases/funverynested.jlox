@@ -1,4 +1,4 @@
-
+--- Test
 fun nested(a) {
   if (a < 3) {
     if (a > 1) {
@@ -16,3 +16,7 @@ fun nested(a) {
 
 print nested(2);
 print nested(1);
+
+--- Expected
+2
+3

@@ -1,10 +1,10 @@
+mod environment;
 mod expr;
 mod interpreter;
 mod parser;
+mod resolver;
 mod scanner;
 mod stmt;
-mod environment;
-mod resolver;
 mod tests;
 use crate::interpreter::*;
 use crate::parser::*;
@@ -15,15 +15,17 @@ use std::fs;
 use std::io::{self, BufRead, Write};
 use std::process::exit;
 
-
-
-
 pub fn run_file(path: &str) -> Result<(), String> {
-    let mut interpreter = Interpreter::new();
+    // let mut interpreter = Interpreter::new();
     match fs::read_to_string(path) {
         Err(msg) => return Err(msg.to_string()),
-        Ok(contents) => return run(&mut interpreter, &contents),
+        Ok(contents) => return run_string(&contents),
     }
+}
+
+pub fn run_string(contents: &str) -> Result<(), String> {
+    let mut interpreter = Interpreter::new();
+    run(&mut interpreter, contents)
 }
 
 fn run(interpreter: &mut Interpreter, contents: &str) -> Result<(), String> {
@@ -68,10 +70,7 @@ fn run_prompt() -> Result<(), String> {
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() > 2 {
-        println!("Usage: jlox [script]");
-        exit(64);
-    } else if args.len() == 2 {
+    if args.len() == 2 {
         match run_file(&args[1]) {
             Ok(_) => exit(0),
             Err(msg) => {
@@ -79,7 +78,15 @@ fn main() {
                 exit(1);
             }
         }
-    } else {
+    } else if args.len() == 3 && args[1] == "e" {
+        match run_string(&args[2]) {
+            Ok(_) => exit(0),
+            Err(msg) => {
+                println!("ERROR:\n{msg}");
+                exit(1);
+            }
+        }
+    } else if args.len() == 1 {
         match run_prompt() {
             Ok(_) => exit(0),
             Err(msg) => {
@@ -87,5 +94,8 @@ fn main() {
                 exit(1);
             }
         }
+    } else {
+        println!("Usage: jlox [script]");
+        exit(64);
     }
 }

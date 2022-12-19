@@ -2,6 +2,7 @@ use crate::environment::Environment;
 use crate::expr::LiteralValue;
 use crate::scanner::Token;
 use crate::stmt::Stmt;
+use crate::expr::Expr;
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -67,7 +68,6 @@ impl Interpreter {
                     println!("{}", value.to_string());
                 }
                 Stmt::Var { name, initializer } => {
-                    println!("{:?}", initializer);
                     let value = initializer.evaluate(self.environment.clone())?;
 
                     self.environment
@@ -170,5 +170,9 @@ impl Interpreter {
         }
 
         Ok(())
+    }
+
+    pub fn resolve(&mut self, _expr: &Expr, _steps: usize) -> Result<(), String> {
+        todo!()
     }
 }
