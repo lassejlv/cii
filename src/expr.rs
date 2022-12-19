@@ -2,9 +2,9 @@ use crate::environment::Environment;
 use crate::interpreter::Interpreter;
 use crate::scanner;
 use crate::scanner::{Token, TokenType};
-use std::hash::{Hash, Hasher};
-use std::cmp::{PartialEq, Eq};
 use std::cell::RefCell;
+use std::cmp::{Eq, PartialEq};
+use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
 #[derive(Clone)]
@@ -177,47 +177,56 @@ use crate::stmt::Stmt;
 #[derive(Clone)]
 pub enum Expr {
     AnonFunction {
+        id: usize,
         paren: Token,
         arguments: Vec<Token>,
         body: Vec<Box<Stmt>>,
     },
     Assign {
+        id: usize,
         name: Token,
         value: Box<Expr>,
     },
     Binary {
+        id: usize,
         left: Box<Expr>,
         operator: Token,
         right: Box<Expr>,
     },
     Call {
+        id: usize,
         callee: Box<Expr>,
         paren: Token,
         arguments: Vec<Expr>,
     },
     Grouping {
+        id: usize,
         expression: Box<Expr>,
     },
     Literal {
+        id: usize,
         value: LiteralValue,
     },
     Logical {
+        id: usize,
         left: Box<Expr>,
         operator: Token,
         right: Box<Expr>,
     },
     Unary {
+        id: usize,
         operator: Token,
         right: Box<Expr>,
     },
     Variable {
+        id: usize,
         name: Token,
     },
 }
 
 impl std::fmt::Debug for Expr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.to_string())
+        write!(f, "{}: {}", self.get_id(), self.to_string())
     }
 }
 
@@ -237,17 +246,62 @@ impl PartialEq for Expr {
 
 impl Eq for Expr {}
 
+
+impl Expr {
+    pub fn get_id(&self) -> usize {
+        match self {
+            Expr::AnonFunction {
+                id,
+                paren: _,
+                arguments: _,
+                body: _,
+            } => *id,
+            Expr::Assign { id, name: _, value: _ } => *id,
+            Expr::Binary {
+                id,
+                left: _,
+                operator: _,
+                right: _,
+            } => *id,
+            
+            Expr::Call {
+                id,
+                callee: _,
+                paren: _,
+                arguments: _,
+            } => *id,
+            Expr::Grouping { id, expression: _, } => *id,
+            Expr::Literal { id, value: _ } => *id,
+            Expr::Logical {
+                id,
+                left: _,
+                operator: _,
+                right: _,
+            } => *id,
+            Expr::Unary {
+                id,
+                operator: _,
+                right: _,
+            } => *id,
+            Expr::Variable { id, name: _ } => *id,
+        }
+    }
+
+}
+
 impl Expr {
     #[allow(dead_code)]
     pub fn to_string(&self) -> String {
         match self {
             Expr::AnonFunction {
+                id: _,
                 paren: _,
                 arguments,
                 body: _,
             } => format!("anon/{}", arguments.len()),
-            Expr::Assign { name, value } => format!("({name:?} = {}", value.to_string()),
+            Expr::Assign { id: _, name, value } => format!("({name:?} = {}", value.to_string()),
             Expr::Binary {
+                id: _,
                 left,
                 operator,
                 right,
@@ -258,13 +312,17 @@ impl Expr {
                 right.to_string()
             ),
             Expr::Call {
+                id: _,
                 callee,
                 paren: _,
                 arguments,
             } => format!("({} {:?})", (*callee).to_string(), arguments),
-            Expr::Grouping { expression } => format!("(group {})", (*expression).to_string()),
-            Expr::Literal { value } => format!("{}", value.to_string()),
+            Expr::Grouping { id: _, expression } => {
+                format!("(group {})", (*expression).to_string())
+            }
+            Expr::Literal { id: _, value } => format!("{}", value.to_string()),
             Expr::Logical {
+                id: _,
                 left,
                 operator,
                 right,
@@ -274,18 +332,27 @@ impl Expr {
                 left.to_string(),
                 right.to_string()
             ),
-            Expr::Unary { operator, right } => {
+            Expr::Unary {
+                id: _,
+                operator,
+                right,
+            } => {
                 let operator_str = operator.lexeme.clone();
                 let right_str = (*right).to_string();
                 format!("({} {})", operator_str, right_str)
             }
-            Expr::Variable { name } => format!("(var {})", name.lexeme),
+            Expr::Variable { id: _, name } => format!("(var {})", name.lexeme),
         }
     }
 
-    pub fn evaluate(&self, environment: Rc<RefCell<Environment>>) -> Result<LiteralValue, String> {
+    pub fn evaluate(
+        &self,
+        environment: Rc<RefCell<Environment>>,
+        distance: Option<usize>,
+    ) -> Result<LiteralValue, String> {
         match self {
             Expr::AnonFunction {
+                id: _,
                 paren,
                 arguments,
                 body,
@@ -313,7 +380,7 @@ impl Expr {
                         ));
 
                         if let Some(value) = anon_int.specials.borrow().get("return") {
-                            return value;
+                            return value.clone();
                         }
                     }
 
@@ -326,11 +393,12 @@ impl Expr {
                     fun: Rc::new(fun_impl),
                 })
             }
-            Expr::Assign { name, value } => {
-                let new_value = (*value).evaluate(environment.clone())?;
-                let assign_success = environment
-                    .borrow_mut()
-                    .assign(&name.lexeme, new_value.clone());
+            Expr::Assign { id: _, name, value } => {
+                let new_value = (*value).evaluate(environment.clone(), distance)?;
+                let assign_success =
+                    environment
+                        .borrow_mut()
+                        .assign(&name.lexeme, new_value.clone(), distance);
 
                 if assign_success {
                     Ok(new_value)
@@ -338,17 +406,20 @@ impl Expr {
                     Err(format!("Variable {} has not been declared", name.lexeme))
                 }
             }
-            Expr::Variable { name } => match environment.borrow().get(&name.lexeme) {
-                Some(value) => Ok(value.clone()),
-                None => Err(format!("Variable '{}' has not been declared", name.lexeme)),
-            },
+            Expr::Variable { id: _, name } => {
+                match environment.borrow().get(&name.lexeme, distance) {
+                    Some(value) => Ok(value.clone()),
+                    None => Err(format!("Variable '{}' has not been declared", name.lexeme)),
+                }
+            }
             Expr::Call {
+                id: _,
                 callee,
                 paren: _,
                 arguments,
             } => {
                 // Look up function definition in environment
-                let callable = (*callee).evaluate(environment.clone())?;
+                let callable = (*callee).evaluate(environment.clone(), distance)?;
                 match callable {
                     Callable { name, arity, fun } => {
                         // Do some checking (correct number of args?)
@@ -363,7 +434,7 @@ impl Expr {
                         // Evaluate arguments
                         let mut arg_vals = vec![];
                         for arg in arguments {
-                            let val = arg.evaluate(environment.clone())?;
+                            let val = arg.evaluate(environment.clone(), distance)?;
                             arg_vals.push(val);
                         }
                         // Apply to arguments
@@ -372,35 +443,40 @@ impl Expr {
                     other => Err(format!("{} is not callable", other.to_type())),
                 }
             }
-            Expr::Literal { value } => Ok((*value).clone()),
+            Expr::Literal { id: _, value } => Ok((*value).clone()),
             Expr::Logical {
+                id: _,
                 left,
                 operator,
                 right,
             } => match operator.token_type {
                 TokenType::Or => {
-                    let lhs_value = left.evaluate(environment.clone())?;
+                    let lhs_value = left.evaluate(environment.clone(), distance)?;
                     let lhs_true = lhs_value.is_truthy();
                     if lhs_true == True {
                         Ok(lhs_value)
                     } else {
-                        right.evaluate(environment.clone())
+                        right.evaluate(environment.clone(), distance)
                     }
                 }
                 TokenType::And => {
-                    let lhs_value = left.evaluate(environment.clone())?;
+                    let lhs_value = left.evaluate(environment.clone(), distance)?;
                     let lhs_true = lhs_value.is_truthy();
                     if lhs_true == False {
                         Ok(lhs_true)
                     } else {
-                        right.evaluate(environment.clone())
+                        right.evaluate(environment.clone(), distance)
                     }
                 }
                 ttype => Err(format!("Invalid token in logical expression: {}", ttype)),
             },
-            Expr::Grouping { expression } => expression.evaluate(environment),
-            Expr::Unary { operator, right } => {
-                let right = right.evaluate(environment)?;
+            Expr::Grouping { id: _, expression } => expression.evaluate(environment, distance),
+            Expr::Unary {
+                id: _,
+                operator,
+                right,
+            } => {
+                let right = right.evaluate(environment, distance)?;
 
                 match (&right, operator.token_type) {
                     (Number(x), TokenType::Minus) => Ok(Number(-x)),
@@ -412,12 +488,13 @@ impl Expr {
                 }
             }
             Expr::Binary {
+                id: _,
                 left,
                 operator,
                 right,
             } => {
-                let left = left.evaluate(environment.clone())?;
-                let right = right.evaluate(environment.clone())?;
+                let left = left.evaluate(environment.clone(), distance)?;
+                let right = right.evaluate(environment.clone(), distance)?;
 
                 match (&left, operator.token_type, &right) {
                     (Number(x), TokenType::Plus, Number(y)) => Ok(Number(x + y)),
@@ -479,6 +556,7 @@ impl Expr {
 mod tests {
     use super::Expr::*;
     use super::*;
+    use std::collections::HashMap;
 
     #[test]
     fn pretty_print_ast() {
@@ -513,5 +591,45 @@ mod tests {
 
         let result = ast.to_string();
         assert_eq!(result, "(* (- 123) (group 45.67))");
+    }
+
+    #[test]
+    fn expr_hashable() {
+        let mut locals = HashMap::new();
+        let minus_token = Token {
+            token_type: TokenType::Minus,
+            lexeme: "-".to_string(),
+            literal: None,
+            line_number: 0,
+        };
+        let onetwothree = Literal {
+            value: Number(123.0),
+        };
+        let group = Grouping {
+            expression: Box::from(Literal {
+                value: Number(45.67),
+            }),
+        };
+        let multi = Token {
+            token_type: TokenType::Star,
+            lexeme: "*".to_string(),
+            literal: None,
+            line_number: 0,
+        };
+        let expr = Binary {
+            left: Box::from(Unary {
+                operator: minus_token,
+                right: Box::from(onetwothree),
+            }),
+            operator: multi,
+            right: Box::from(group),
+        };
+
+        let addr = std::ptr::addr_of!(expr) as usize;
+        locals.insert(addr, 0);
+
+        if let None = locals.get(&addr) {
+            panic!("Failed");
+        }
     }
 }

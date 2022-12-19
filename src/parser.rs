@@ -5,6 +5,7 @@ use crate::stmt::Stmt;
 pub struct Parser {
     tokens: Vec<Token>,
     current: usize,
+    next_id: usize,
 }
 
 #[derive(Debug)]
@@ -17,7 +18,15 @@ impl Parser {
         Self {
             tokens: tokens,
             current: 0,
+            next_id: 0,
         }
+    }
+
+    fn get_id(&mut self) -> usize {
+        let id = self.next_id;
+        self.next_id += 1;
+        
+        id
     }
 
     pub fn parse(&mut self) -> Result<Vec<Stmt>, String> {
@@ -98,6 +107,7 @@ impl Parser {
             initializer = self.expression()?;
         } else {
             initializer = Literal {
+                id: self.get_id(),
                 value: LiteralValue::Nil,
             };
         }
@@ -193,6 +203,7 @@ impl Parser {
         match condition {
             None => {
                 cond = Expr::Literal {
+                    id: self.get_id(),
                     value: LiteralValue::True,
                 }
             }
@@ -308,6 +319,7 @@ impl Parser {
         };
 
         Ok(Expr::AnonFunction {
+            id: self.get_id(),
             paren,
             arguments: parameters,
             body,
@@ -321,7 +333,8 @@ impl Parser {
             let value = self.expression()?;
 
             match expr {
-                Variable { name } => Ok(Assign {
+                Variable { id: _, name } => Ok(Assign {
+                    id: self.get_id(),
                     name,
                     value: Box::from(value),
                 }),
@@ -340,6 +353,7 @@ impl Parser {
             let right = self.and()?;
 
             expr = Logical {
+                id: self.get_id(),
                 left: Box::new(expr),
                 operator: operator,
                 right: Box::new(right),
@@ -356,6 +370,7 @@ impl Parser {
             let operator = self.previous();
             let right = self.equality()?;
             expr = Logical {
+                id: self.get_id(),
                 left: Box::new(expr),
                 operator: operator,
                 right: Box::new(right),
@@ -371,6 +386,7 @@ impl Parser {
             let operator = self.previous();
             let rhs = self.comparison()?;
             expr = Binary {
+                id: self.get_id(),
                 left: Box::from(expr),
                 operator: operator,
                 right: Box::from(rhs),
@@ -387,6 +403,7 @@ impl Parser {
             let op = self.previous();
             let rhs = self.term()?;
             expr = Binary {
+                id: self.get_id(),
                 left: Box::from(expr),
                 operator: op,
                 right: Box::from(rhs),
@@ -403,6 +420,7 @@ impl Parser {
             let op = self.previous();
             let rhs = self.factor()?;
             expr = Binary {
+                id: self.get_id(),
                 left: Box::from(expr),
                 operator: op,
                 right: Box::from(rhs),
@@ -418,6 +436,7 @@ impl Parser {
             let op = self.previous();
             let rhs = self.unary()?;
             expr = Binary {
+                id: self.get_id(),
                 left: Box::from(expr),
                 operator: op,
                 right: Box::from(rhs),
@@ -432,6 +451,7 @@ impl Parser {
             let op = self.previous();
             let rhs = self.unary()?;
             Ok(Unary {
+                id: self.get_id(),
                 operator: op,
                 right: Box::from(rhs),
             })
@@ -476,6 +496,7 @@ impl Parser {
         let paren = self.consume(RightParen, "Expected ')' after arguments.")?;
 
         Ok(Call {
+            id: self.get_id(),
             callee: Box::new(callee),
             paren,
             arguments,
@@ -491,18 +512,21 @@ impl Parser {
                 let expr = self.expression()?;
                 self.consume(RightParen, "Expected ')'")?;
                 result = Grouping {
+                    id: self.get_id(),
                     expression: Box::from(expr),
                 };
             }
             False | True | Nil | Number | StringLit => {
                 self.advance();
                 result = Literal {
+                    id: self.get_id(),
                     value: LiteralValue::from_token(token),
                 }
             }
             Identifier => {
                 self.advance();
                 result = Variable {
+                    id: self.get_id(),
                     name: self.previous(),
                 };
             },
