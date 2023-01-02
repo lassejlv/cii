@@ -42,19 +42,6 @@ impl Environment {
         }
     }
 
-    // pub fn define(&mut self, name: String, value: LiteralValue, distance: Option<usize>) {
-    //     if let None = distance {
-    //         self.globals.borrow_mut().insert(name, value);
-    //     } else {
-    //         let distance = distance.unwrap();
-    //         if distance == 0 {
-    //             self.values.insert(name, value);
-    //         } else {
-    //             self.define(name, value, Some(distance - 1));
-    //         }
-    //     }
-    // }
-
     pub fn define(&mut self, name: String, value: LiteralValue) {
         self.values.insert(name, value);
     }

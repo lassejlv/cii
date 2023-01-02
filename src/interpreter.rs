@@ -22,14 +22,17 @@ impl Interpreter {
         }
     }
 
-    fn for_closure(parent: Rc<RefCell<Environment>>) -> Self {
+    fn for_closure(
+        parent: Rc<RefCell<Environment>>,
+        locals: Rc<RefCell<HashMap<usize, usize>>>,
+    ) -> Self {
         let environment = Rc::new(RefCell::new(Environment::new()));
         environment.borrow_mut().enclosing = Some(parent);
 
         Self {
             specials: Rc::new(RefCell::new(HashMap::new())),
             environment,
-            locals: Rc::new(RefCell::new(HashMap::new())),
+            locals: locals,
         }
     }
 
@@ -58,7 +61,6 @@ impl Interpreter {
                 Stmt::Var { name, initializer } => {
                     let distance = self.get_distance(&initializer);
                     let value = initializer.evaluate(self.environment.clone(), distance)?;
-
                     self.environment
                         .borrow_mut()
                         .define(name.lexeme.clone(), value);
@@ -113,14 +115,16 @@ impl Interpreter {
                     // and which implements Fn
 
                     let parent_env = self.environment.clone();
+                    let parent_locals = self.locals.clone();
                     let fun_impl = move |args: &Vec<LiteralValue>| {
-                        let mut clos_int = Interpreter::for_closure(parent_env.clone());
+                        let mut clos_int =
+                            Interpreter::for_closure(parent_env.clone(), parent_locals.clone());
 
                         for (i, arg) in args.iter().enumerate() {
-                            clos_int.environment.borrow_mut().define(
-                                params[i].lexeme.clone(),
-                                (*arg).clone(),
-                            );
+                            clos_int
+                                .environment
+                                .borrow_mut()
+                                .define(params[i].lexeme.clone(), (*arg).clone());
                         }
 
                         for i in 0..(body.len()) {
@@ -165,12 +169,13 @@ impl Interpreter {
     }
 
     // TODO Try the trick with addresses again
-    pub fn resolve(&mut self, expr: &Expr, steps: usize) -> Result<(), String> {
-        self.locals.borrow_mut().insert(expr.get_id(), steps);
+    pub fn resolve(&mut self, id: usize, steps: usize) -> Result<(), String> {
+        self.locals.borrow_mut().insert(id, steps);
         Ok(())
     }
 
     fn get_distance(&self, expr: &Expr) -> Option<usize> {
-        self.locals.borrow().get(&expr.get_id()).copied()
+        let dist = self.locals.borrow().get(&expr.get_id()).copied();
+        dist
     }
 }

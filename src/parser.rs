@@ -327,7 +327,8 @@ impl Parser {
     }
 
     fn assignment(&mut self) -> Result<Expr, String> {
-        let expr = self.or()?;
+        // a = 2; NOT var a = 2;
+        let expr = self.pipe()?;
 
         if self.match_token(Equal) {
             let value = self.expression()?;
@@ -343,6 +344,30 @@ impl Parser {
         } else {
             Ok(expr)
         }
+    }
+
+    fn pipe(&mut self) -> Result<Expr, String> {
+        // expr |> f
+        // expr |> f1 |> f2
+        // expr |> (f1 |> f2)
+        // expr |> (f1 |> (f2 |> f3))
+        // (expr |> f1) |> f2
+        
+        // expr |> fun (a) { return a + 1; }
+        // expr |> a -> a + 1
+        let mut expr = self.or()?;
+        while self.match_token(Pipe) {
+            let pipe = self.previous();
+            let function = self.or()?;
+
+            expr = Call {
+                id: self.get_id(),
+                callee: Box::new(function),
+                paren: pipe,
+                arguments: vec![expr]};
+
+        }
+        Ok(expr)
     }
 
     fn or(&mut self) -> Result<Expr, String> {

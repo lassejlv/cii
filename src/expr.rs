@@ -193,7 +193,8 @@ pub enum Expr {
         operator: Token,
         right: Box<Expr>,
     },
-    Call {
+    // 2 + 2 |> f
+    Call { // x |> f -> Call { id, f, paren (pipe), arguments: [x]}
         id: usize,
         callee: Box<Expr>,
         paren: Token,
@@ -567,10 +568,13 @@ mod tests {
             line_number: 0,
         };
         let onetwothree = Literal {
+            id: 0,
             value: Number(123.0),
         };
         let group = Grouping {
+            id: 1,
             expression: Box::from(Literal {
+                id: 2,
                 value: Number(45.67),
             }),
         };
@@ -581,7 +585,9 @@ mod tests {
             line_number: 0,
         };
         let ast = Binary {
+            id: 3,
             left: Box::from(Unary {
+                id: 4,
                 operator: minus_token,
                 right: Box::from(onetwothree),
             }),
@@ -603,10 +609,13 @@ mod tests {
             line_number: 0,
         };
         let onetwothree = Literal {
+            id: 0,
             value: Number(123.0),
         };
         let group = Grouping {
+            id: 1,
             expression: Box::from(Literal {
+                id: 2,
                 value: Number(45.67),
             }),
         };
@@ -617,7 +626,9 @@ mod tests {
             line_number: 0,
         };
         let expr = Binary {
+            id: 3,
             left: Box::from(Unary {
+                id: 4,
                 operator: minus_token,
                 right: Box::from(onetwothree),
             }),

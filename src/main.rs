@@ -41,7 +41,7 @@ fn run(interpreter: Rc<RefCell<Interpreter>>, contents: &str) -> Result<(), Stri
     // for stmt in &stmts {
     //     println!("{stmt:?}");
     // }
-
+    
     let mut resolver = Resolver::new(interpreter.clone());
     resolver.resolve_many(&stmts.iter().collect())?;
     // println!("#####################RESOLVE DONE###############");
