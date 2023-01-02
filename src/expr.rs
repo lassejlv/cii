@@ -410,11 +410,11 @@ impl Expr {
             Expr::Variable { id: _, name } => {
                 match environment.borrow().get(&name.lexeme, distance) {
                     Some(value) => Ok(value.clone()),
-                    None => Err(format!("Variable '{}' has not been declared", name.lexeme)),
+                    None => Err(format!("Variable '{}' has not been declared at distance {distance:?}", name.lexeme)),
                 }
             }
             Expr::Call {
-                id: _,
+                id,
                 callee,
                 paren: _,
                 arguments,
@@ -435,6 +435,7 @@ impl Expr {
                         // Evaluate arguments
                         let mut arg_vals = vec![];
                         for arg in arguments {
+                            // TODO Args here should have their own distance
                             let val = arg.evaluate(environment.clone(), distance)?;
                             arg_vals.push(val);
                         }

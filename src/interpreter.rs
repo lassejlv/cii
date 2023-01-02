@@ -36,14 +36,15 @@ impl Interpreter {
         }
     }
 
-    pub fn for_anon(parent: Rc<RefCell<Environment>>) -> Self {
-        let mut env = Environment::new();
-        env.enclosing = Some(parent);
-        Self {
-            specials: Rc::new(RefCell::new(HashMap::new())),
-            environment: Rc::new(RefCell::new(env)),
-            locals: Rc::new(RefCell::new(HashMap::new())),
-        }
+    pub fn for_anon(_parent: Rc<RefCell<Environment>>) -> Self {
+        todo!("This should get locals from the parent interpreter");
+        // let mut env = Environment::new();
+        // env.enclosing = Some(parent);
+        // Self {
+        //     specials: Rc::new(RefCell::new(HashMap::new())),
+        //     environment: Rc::new(RefCell::new(env)),
+        //     locals: Rc::new(RefCell::new(HashMap::new())),
+        // }
     }
 
     pub fn interpret(&mut self, stmts: Vec<&Stmt>) -> Result<(), String> {
