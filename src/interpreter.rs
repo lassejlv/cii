@@ -1,5 +1,4 @@
 use crate::environment::Environment;
-use crate::expr::Expr;
 use crate::expr::LiteralValue;
 use crate::scanner::Token;
 use crate::stmt::Stmt;
@@ -36,32 +35,33 @@ impl Interpreter {
         }
     }
 
-    pub fn for_anon(_parent: Rc<RefCell<Environment>>) -> Self {
-        todo!("This should get locals from the parent interpreter");
-        // let mut env = Environment::new();
-        // env.enclosing = Some(parent);
-        // Self {
-        //     specials: Rc::new(RefCell::new(HashMap::new())),
-        //     environment: Rc::new(RefCell::new(env)),
-        //     locals: Rc::new(RefCell::new(HashMap::new())),
-        // }
+    pub fn for_anon(
+        parent: Rc<RefCell<Environment>>,
+        locals: Rc<RefCell<HashMap<usize, usize>>>,
+    ) -> Self {
+        let mut env = Environment::new();
+        env.enclosing = Some(parent);
+        Self {
+            specials: Rc::new(RefCell::new(HashMap::new())),
+            environment: Rc::new(RefCell::new(env)),
+            locals,
+        }
     }
 
     pub fn interpret(&mut self, stmts: Vec<&Stmt>) -> Result<(), String> {
         for stmt in stmts {
             match stmt {
                 Stmt::Expression { expression } => {
-                    let distance = self.get_distance(&expression);
-                    expression.evaluate(self.environment.clone(), distance)?;
+                    expression.evaluate(self.environment.clone(), self.locals.clone())?;
                 }
                 Stmt::Print { expression } => {
-                    let distance = self.get_distance(&expression);
-                    let value = expression.evaluate(self.environment.clone(), distance)?;
+                    let value =
+                        expression.evaluate(self.environment.clone(), self.locals.clone())?;
                     println!("{}", value.to_string());
                 }
                 Stmt::Var { name, initializer } => {
-                    let distance = self.get_distance(&initializer);
-                    let value = initializer.evaluate(self.environment.clone(), distance)?;
+                    let value =
+                        initializer.evaluate(self.environment.clone(), self.locals.clone())?;
                     self.environment
                         .borrow_mut()
                         .define(name.lexeme.clone(), value);
@@ -82,8 +82,8 @@ impl Interpreter {
                     then,
                     els,
                 } => {
-                    let distance = self.get_distance(&predicate);
-                    let truth_value = predicate.evaluate(self.environment.clone(), distance)?;
+                    let truth_value =
+                        predicate.evaluate(self.environment.clone(), self.locals.clone())?;
                     if truth_value.is_truthy() == LiteralValue::True {
                         let statements = vec![then.as_ref()];
                         self.interpret(statements)?;
@@ -93,12 +93,12 @@ impl Interpreter {
                     }
                 }
                 Stmt::WhileStmt { condition, body } => {
-                    let distance = self.get_distance(&condition);
-                    let mut flag = condition.evaluate(self.environment.clone(), distance)?;
+                    let mut flag =
+                        condition.evaluate(self.environment.clone(), self.locals.clone())?;
                     while flag.is_truthy() == LiteralValue::True {
                         let statements = vec![body.as_ref()];
                         self.interpret(statements)?;
-                        flag = condition.evaluate(self.environment.clone(), distance)?;
+                        flag = condition.evaluate(self.environment.clone(), self.locals.clone())?;
                     }
                 }
                 Stmt::Function { name, params, body } => {
@@ -154,8 +154,7 @@ impl Interpreter {
                 Stmt::ReturnStmt { keyword: _, value } => {
                     let eval_val;
                     if let Some(value) = value {
-                        let distance = self.get_distance(value);
-                        eval_val = value.evaluate(self.environment.clone(), distance)?;
+                        eval_val = value.evaluate(self.environment.clone(), self.locals.clone())?;
                     } else {
                         eval_val = LiteralValue::Nil;
                     }
@@ -173,10 +172,5 @@ impl Interpreter {
     pub fn resolve(&mut self, id: usize, steps: usize) -> Result<(), String> {
         self.locals.borrow_mut().insert(id, steps);
         Ok(())
-    }
-
-    fn get_distance(&self, expr: &Expr) -> Option<usize> {
-        let dist = self.locals.borrow().get(&expr.get_id()).copied();
-        dist
     }
 }
