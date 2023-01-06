@@ -38,10 +38,10 @@ mod tests {
 
         let mut idx = None;
         for (i, line) in lines.iter().enumerate() {
-            if line.starts_with("--- Test") {
+            if line.starts_with("// --- Test") {
                 continue;
             }
-            if line.starts_with("--- Expected") {
+            if line.starts_with("// --- Expected") {
                 idx = Some(i);
                 break;
             }
@@ -57,7 +57,8 @@ mod tests {
 
         for line in &lines[idx + 1..] {
             if line.len() > 0 {
-                expected_output.push(*line);
+                let string = line.to_string();
+                expected_output.push((string[3..]).to_string());
             }
         }
 

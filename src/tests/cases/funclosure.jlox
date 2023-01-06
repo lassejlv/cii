@@ -1,4 +1,4 @@
---- Test
+// --- Test
 fun make_counter() {
   var i = 0;
   fun count() {
@@ -19,8 +19,8 @@ counter2();
 counter2();
 
 
---- Expected
-1
-2
-1
-2
+// --- Expected
+// 1
+// 2
+// 1
+// 2

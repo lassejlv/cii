@@ -1,4 +1,4 @@
---- Test
+// --- Test
 var a = "global";
 {
   fun showA() {
@@ -10,6 +10,6 @@ var a = "global";
   showA();
 }
 
---- Expected
-"global"
-"block"
+// --- Expected
+// "global"
+// "global"

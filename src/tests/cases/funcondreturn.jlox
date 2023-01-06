@@ -1,4 +1,4 @@
---- Test
+// --- Test
 fun condreturn(a) {
   if (a <= 0) return 0;
 
@@ -11,8 +11,8 @@ print condreturn(2);
 print condreturn(-1);
 
 
---- Expected
-3
-2
-1
-0
+// --- Expected
+// 3
+// 2
+// 1
+// 0

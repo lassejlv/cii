@@ -1,4 +1,4 @@
---- Test
+// --- Test
 var a = 0;
 var temp;
 
@@ -8,12 +8,12 @@ for (var b = 1; a < 21; b = temp + b) {
   a = b;
 }
 
---- Expected
-0
-1
-1
-2
-3
-5
-8
-13
+// --- Expected
+// 0
+// 1
+// 1
+// 2
+// 3
+// 5
+// 8
+// 13

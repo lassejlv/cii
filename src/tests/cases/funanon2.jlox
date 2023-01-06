@@ -1,4 +1,4 @@
---- Test
+// --- Test
 fun caller(fn) {
   fn();
 }
@@ -10,5 +10,5 @@ caller(fun () { a = a + 1; });
 print a;
 
 
---- Expected
-1
+// --- Expected
+// 1

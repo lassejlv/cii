@@ -1,4 +1,4 @@
---- Test
+// --- Test
 var a = 2;
 {
   a = 3;
@@ -6,6 +6,6 @@ var a = 2;
 }
 print a;
 
---- Expected
-3
-3
+// --- Expected
+// 3
+// 3
