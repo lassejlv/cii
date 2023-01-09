@@ -6,10 +6,17 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+#[derive(Copy, Clone, PartialEq)]
+enum FunctionType {
+    None,
+    Function,
+}
+
 #[allow(dead_code)]
 pub struct Resolver {
     pub interpreter: Rc<RefCell<Interpreter>>,
     scopes: Vec<HashMap<String, bool>>,
+    current_function: FunctionType,
 }
 
 impl Resolver {
@@ -17,6 +24,7 @@ impl Resolver {
         Self {
             interpreter,
             scopes: vec![],
+            current_function: FunctionType::None,
         }
     }
 
@@ -32,23 +40,22 @@ impl Resolver {
                 params: _,
                 body: _,
             } => self.resolve_function(stmt)?,
-            Stmt::Expression { expression } => {
-                self.resolve_expr(expression)?
-            }
+            Stmt::Expression { expression } => self.resolve_expr(expression)?,
             Stmt::IfStmt {
                 predicate: _,
                 then: _,
                 els: _,
             } => self.resolve_if_stmt(stmt)?,
             Stmt::Print { expression } => self.resolve_expr(expression)?,
-            Stmt::ReturnStmt {
-                keyword: _,
-                value: None,
-            } => (),
-            Stmt::ReturnStmt {
-                keyword: _,
-                value: Some(value),
-            } => self.resolve_expr(value)?,
+            Stmt::ReturnStmt { keyword: _, value } => {
+                if self.current_function == FunctionType::None {
+                    return Err("Return statement is not allowed outside of a function".to_string());
+                }
+
+                if let Some(value) = value {
+                    self.resolve_expr(value)?;
+                }
+            }
             Stmt::WhileStmt { condition, body } => {
                 self.resolve_expr(condition)?;
                 self.resolve(body.as_ref())?;
@@ -80,7 +87,7 @@ impl Resolver {
 
     fn resolve_var(&mut self, stmt: &Stmt) -> Result<(), String> {
         if let Stmt::Var { name, initializer } = stmt {
-            self.declare(name);
+            self.declare(name)?;
             self.resolve_expr(initializer)?;
             self.define(name);
         } else {
@@ -92,10 +99,14 @@ impl Resolver {
 
     fn resolve_function(&mut self, stmt: &Stmt) -> Result<(), String> {
         if let Stmt::Function { name, params, body } = stmt {
-            self.declare(name);
+            self.declare(name)?;
             self.define(name);
 
-            self.resolve_function_helper(params, &body.iter().map(|b| b.as_ref()).collect())
+            self.resolve_function_helper(
+                params,
+                &body.iter().map(|b| b.as_ref()).collect(),
+                FunctionType::Function,
+            )
         } else {
             panic!("Wrong type in resolve function");
         }
@@ -124,15 +135,18 @@ impl Resolver {
         &mut self,
         params: &Vec<Token>,
         body: &Vec<&Stmt>,
+        resolving_function: FunctionType,
     ) -> Result<(), String> {
+        let enclosing_function = self.current_function;
+        self.current_function = resolving_function;
         self.begin_scope();
         for param in params {
-            self.declare(param);
+            self.declare(param)?;
             self.define(param);
         }
         self.resolve_many(body)?;
         self.end_scope();
-
+        self.current_function = enclosing_function;
         Ok(())
     }
 
@@ -144,13 +158,19 @@ impl Resolver {
         self.scopes.pop().expect("Stack underflow");
     }
 
-    fn declare(&mut self, name: &Token) {
+    fn declare(&mut self, name: &Token) -> Result<(), String> {
         let size = self.scopes.len();
         if self.scopes.is_empty() {
-            return;
+            return Ok(());
+        }
+
+        if self.scopes[size - 1].contains_key(&name.lexeme.clone()) {
+            return Err("A variable with this name is already in scope".to_string());
         }
 
         self.scopes[size - 1].insert(name.lexeme.clone(), false);
+
+        Ok(())
     }
 
     fn define(&mut self, name: &Token) {
@@ -198,9 +218,7 @@ impl Resolver {
 
                 Ok(())
             }
-            Expr::Grouping { id: _, expression } => {
-                self.resolve_expr(expression)
-            }
+            Expr::Grouping { id: _, expression } => self.resolve_expr(expression),
             Expr::Literal { id: _, value: _ } => Ok(()),
             Expr::Logical {
                 id: _,
@@ -221,9 +239,11 @@ impl Resolver {
                 paren: _,
                 arguments,
                 body,
-            } => {
-                self.resolve_function_helper(arguments, &body.iter().map(|b| b.as_ref()).collect())
-            }
+            } => self.resolve_function_helper(
+                arguments,
+                &body.iter().map(|b| b.as_ref()).collect(),
+                FunctionType::Function,
+            ),
         }
     }
 
@@ -244,9 +264,7 @@ impl Resolver {
                 paren: _,
                 arguments: _,
             } => match callee.as_ref() {
-                Expr::Variable { id: _, name } => {
-                    self.resolve_local(&name, resolve_id)
-                }
+                Expr::Variable { id: _, name } => self.resolve_local(&name, resolve_id),
                 _ => panic!("Wrong type in resolve_expr_var"),
             },
             _ => panic!("Wrong type in resolve_expr_var"),
@@ -268,7 +286,7 @@ impl Resolver {
                 return Ok(());
             }
         }
-        
+
         // Assume it's global
         Ok(())
     }

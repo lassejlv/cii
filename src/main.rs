@@ -38,18 +38,9 @@ fn run(interpreter: Rc<RefCell<Interpreter>>, contents: &str) -> Result<(), Stri
     let mut parser = Parser::new(tokens);
     let stmts = parser.parse()?;
 
-    // for stmt in &stmts {
-    //     println!("{stmt:?}");
-    // }
-    
     let mut resolver = Resolver::new(interpreter.clone());
     resolver.resolve_many(&stmts.iter().collect())?;
-    // println!("#####################RESOLVE DONE###############");
-    // for stmt in &stmts {
-    //     println!("{stmt:?}");
-    // }
 
-    // Ok(())
     interpreter.borrow_mut().interpret(stmts.iter().collect())?;
     return Ok(());
 }
