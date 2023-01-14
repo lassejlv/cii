@@ -77,6 +77,22 @@ impl Interpreter {
 
                     block_result?;
                 }
+                Stmt::Class { name, methods: _ } => {
+                    self.environment
+                        .borrow_mut()
+                        .define(name.lexeme.clone(), LiteralValue::Nil);
+                    let klass = LiteralValue::LoxClass {
+                        name: name.lexeme.clone(),
+                    };
+
+                    if !self
+                        .environment
+                        .borrow_mut()
+                        .assign(&name.lexeme, klass, None)
+                    {
+                        return Err(format!("Class definition failed for {}", name.lexeme));
+                    }
+                }
                 Stmt::IfStmt {
                     predicate,
                     then,

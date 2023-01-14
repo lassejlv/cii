@@ -16,6 +16,10 @@ pub enum Stmt {
     Block {
         statements: Vec<Box<Stmt>>,
     },
+    Class {
+        name: Token,
+        methods: Vec<Box<Stmt>>,
+    },
     IfStmt {
         predicate: Expr,
         then: Box<Stmt>,
@@ -69,6 +73,7 @@ impl Stmt {
                 body: _,
             } => todo!(),
             ReturnStmt { keyword: _, value: _ } => todo!(),
+            _ => todo!(),
         }
     }
 }

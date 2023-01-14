@@ -11,6 +11,7 @@ pub struct Parser {
 #[derive(Debug)]
 enum FunctionKind {
     Function,
+    Method,
 }
 
 impl Parser {
@@ -25,7 +26,7 @@ impl Parser {
     fn get_id(&mut self) -> usize {
         let id = self.next_id;
         self.next_id += 1;
-        
+
         id
     }
 
@@ -56,9 +57,29 @@ impl Parser {
             self.var_declaration()
         } else if self.match_token(Fun) {
             self.function(FunctionKind::Function)
+        } else if self.match_token(Class) {
+            self.class_declaration()
         } else {
             self.statement()
         }
+    }
+
+    fn class_declaration(&mut self) -> Result<Stmt, String> {
+        let name = self.consume(Identifier, "Expected name after 'class' keyword.")?;
+        self.consume(LeftBrace, "Expected '{' before class body.")?;
+
+        let mut methods = vec![];
+        while !self.check(RightBrace) && !self.is_at_end() {
+            let method = self.function(FunctionKind::Method)?;
+            methods.push(Box::new(method));
+        }
+
+        self.consume(RightBrace, "Expected '}' after class body.")?;
+
+        Ok(Stmt::Class {
+            name,
+            methods,
+        })
     }
 
     fn function(&mut self, kind: FunctionKind) -> Result<Stmt, String> {
@@ -352,7 +373,7 @@ impl Parser {
         // expr |> (f1 |> f2)
         // expr |> (f1 |> (f2 |> f3))
         // (expr |> f1) |> f2
-        
+
         // expr |> fun (a) { return a + 1; }
         // expr |> a -> a + 1
         let mut expr = self.or()?;
@@ -364,8 +385,8 @@ impl Parser {
                 id: self.get_id(),
                 callee: Box::new(function),
                 paren: pipe,
-                arguments: vec![expr]};
-
+                arguments: vec![expr],
+            };
         }
         Ok(expr)
     }
@@ -554,11 +575,11 @@ impl Parser {
                     id: self.get_id(),
                     name: self.previous(),
                 };
-            },
+            }
             Fun => {
                 self.advance();
                 result = self.function_expression()?;
-            },
+            }
             _ => return Err("Expected expression".to_string()),
         }
 
