@@ -22,7 +22,11 @@ pub enum LiteralValue {
     },
     LoxClass {
         name: String,
-        //methods: Vec<(String, LiteralValue)>, // TODO Could also be fields?
+        //methods: Vec<(String, LiteralValue)>, // TODO Could also add static fields?
+    },
+    LoxInstance {
+        class: Box<LiteralValue>,
+        fields: Vec<(String, LiteralValue)>,
     },
 }
 use LiteralValue::*;
@@ -72,6 +76,16 @@ fn unwrap_as_string(literal: Option<scanner::LiteralValue>) -> String {
     }
 }
 
+macro_rules! class_name {
+    ($class:expr) => {{
+        if let LiteralValue::LoxClass { name } = &**$class {
+            name
+        } else {
+            panic!("Unreachable")
+        }
+    }};
+}
+
 impl LiteralValue {
     pub fn to_string(&self) -> String {
         match self {
@@ -85,9 +99,8 @@ impl LiteralValue {
                 arity,
                 fun: _,
             } => format!("{name}/{arity}"),
-            LiteralValue::LoxClass {
-                name,
-            } => format!("Class '{name}'"),
+            LiteralValue::LoxClass { name } => format!("Class '{name}'"),
+            LiteralValue::LoxInstance { class, fields: _ } => format!("Instance of '{}'", class_name!(class)),
         }
     }
 
@@ -103,7 +116,8 @@ impl LiteralValue {
                 arity: _,
                 fun: _,
             } => "Callable",
-            LiteralValue::LoxClass { name: _} => "Class",
+            LiteralValue::LoxClass { name: _ } => "Class",
+            LiteralValue::LoxInstance { class, fields: _ } => &class_name!(class),
         }
     }
 
@@ -151,6 +165,7 @@ impl LiteralValue {
                 fun: _,
             } => panic!("Cannot use Callable as a falsy value"),
             LoxClass { name: _ } => panic!("Cannot use class as a falsy value"),
+            _ => panic!("Not valid as a boolean value"),
         }
     }
 
@@ -179,6 +194,7 @@ impl LiteralValue {
                 fun: _,
             } => panic!("Can not use callable as a truthy value"),
             LoxClass { name: _ } => panic!("Cannot use class as a truthy value"),
+            _ => panic!("Not valid as a boolean value"),
         }
     }
 }
@@ -211,6 +227,11 @@ pub enum Expr {
         callee: Box<Expr>,
         paren: Token,
         arguments: Vec<Expr>,
+    },
+    Get {
+        id: usize,
+        object: Box<Expr>,
+        name: Token,
     },
     Grouping {
         id: usize,
@@ -286,6 +307,7 @@ impl Expr {
                 paren: _,
                 arguments: _,
             } => *id,
+            Expr::Get { id, object: _, name: _ } => *id,
             Expr::Grouping { id, expression: _ } => *id,
             Expr::Literal { id, value: _ } => *id,
             Expr::Logical {
@@ -332,6 +354,8 @@ impl Expr {
                 paren: _,
                 arguments,
             } => format!("({} {:?})", (*callee).to_string(), arguments),
+            Expr::Get { id: _, object, name } =>
+                format!("(get {} {})", object.to_string(), name.lexeme),
             Expr::Grouping { id: _, expression } => {
                 format!("(group {})", (*expression).to_string())
             }
@@ -410,11 +434,9 @@ impl Expr {
                 })
             }
             Expr::Assign { id: _, name, value } => {
-                let distance = locals
-                    .borrow()
-                    .get(&self.get_id()).cloned();
+                let distance = locals.borrow().get(&self.get_id()).cloned();
                 //.ok_or_else(|| format!("Couldnt resolve assignment to {name:?}"))?;
-                    // Can be None if global
+                // Can be None if global
                 // ! Important that this matches with the resolver
                 let new_value = (*value).evaluate(environment.clone(), locals.clone())?;
                 let assign_success =
@@ -446,7 +468,8 @@ impl Expr {
             } => {
                 // Look up function definition in environment
                 // let callable_distance = locals.borrow().get(&self.get_id());
-                let callable = (*callee).evaluate(environment.clone(), locals.clone())?;
+                let callable: LiteralValue =
+                    (*callee).evaluate(environment.clone(), locals.clone())?;
                 match callable {
                     Callable { name, arity, fun } => {
                         // Do some checking (correct number of args?)
@@ -466,6 +489,17 @@ impl Expr {
                         }
                         // Apply to arguments
                         Ok(fun(&arg_vals))
+                    }
+                    LoxClass { name: _ } => {
+                        if arguments.len() != 0 {
+                            return Err(
+                                "Can only call the constructor with zero arguments".to_string()
+                            );
+                        }
+                        Ok(LoxInstance {
+                            class: Box::new(callable.clone()),
+                            fields: vec![],
+                        })
                     }
                     other => Err(format!("{} is not callable", other.to_type())),
                 }
@@ -497,6 +531,23 @@ impl Expr {
                 }
                 ttype => Err(format!("Invalid token in logical expression: {}", ttype)),
             },
+            Expr::Get { id: _, object, name } => {
+                let obj_value = object.evaluate(environment.clone(), locals.clone())?;
+                // Now obj_value should be a LoxInstance
+                if let LoxInstance { class: _, fields } = obj_value {
+                    for (field_name, value) in fields {
+                        if field_name == name.lexeme {
+                            return Ok(value);
+                        }
+                    }
+                    Err(format!("No field named {} on this instance", name.lexeme))
+                } else {
+                    Err(format!(
+                        "Cannot access property on type {}",
+                        obj_value.to_type()
+                    ))
+                }
+            }
             Expr::Grouping { id: _, expression } => {
                 expression.evaluate(environment, locals.clone())
             }

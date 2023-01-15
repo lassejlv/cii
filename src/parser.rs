@@ -512,6 +512,13 @@ impl Parser {
         loop {
             if self.match_token(LeftParen) {
                 expr = self.finish_call(expr)?;
+            } else if self.match_token(Dot) {
+                let name = self.consume(Identifier, "Expected token after dot-accessor")?;
+                expr = Get {
+                    id: self.get_id(),
+                    object: Box::new(expr),
+                    name
+                };
             } else {
                 break;
             }
