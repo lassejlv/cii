@@ -349,7 +349,7 @@ impl Parser {
 
     fn assignment(&mut self) -> Result<Expr, String> {
         // a = 2; NOT var a = 2;
-        let expr = self.pipe()?;
+        let expr = self.pipe()?; // a |> f = 2;
 
         if self.match_token(Equal) {
             let value = self.expression()?;
@@ -360,6 +360,14 @@ impl Parser {
                     name,
                     value: Box::from(value),
                 }),
+                Get { id: _, object, name } => {
+                    Ok(Set {
+                        id: self.get_id(),
+                        object,
+                        name,
+                        value: 1Box::new(value),
+                    })
+                }
                 _ => Err("Invalid assignment target.".to_string()),
             }
         } else {

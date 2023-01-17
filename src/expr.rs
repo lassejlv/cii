@@ -26,7 +26,7 @@ pub enum LiteralValue {
     },
     LoxInstance {
         class: Box<LiteralValue>,
-        fields: Vec<(String, LiteralValue)>,
+        fields: Rc<RefCell<Vec<(String, LiteralValue)>>>,
     },
 }
 use LiteralValue::*;
@@ -100,7 +100,9 @@ impl LiteralValue {
                 fun: _,
             } => format!("{name}/{arity}"),
             LiteralValue::LoxClass { name } => format!("Class '{name}'"),
-            LiteralValue::LoxInstance { class, fields: _ } => format!("Instance of '{}'", class_name!(class)),
+            LiteralValue::LoxInstance { class, fields: _ } => {
+                format!("Instance of '{}'", class_name!(class))
+            }
         }
     }
 
@@ -247,6 +249,12 @@ pub enum Expr {
         operator: Token,
         right: Box<Expr>,
     },
+    Set {
+        id: usize,
+        object: Box<Expr>,
+        name: Token,
+        value: Box<Expr>,
+    },
     Unary {
         id: usize,
         operator: Token,
@@ -307,7 +315,11 @@ impl Expr {
                 paren: _,
                 arguments: _,
             } => *id,
-            Expr::Get { id, object: _, name: _ } => *id,
+            Expr::Get {
+                id,
+                object: _,
+                name: _,
+            } => *id,
             Expr::Grouping { id, expression: _ } => *id,
             Expr::Literal { id, value: _ } => *id,
             Expr::Logical {
@@ -315,6 +327,12 @@ impl Expr {
                 left: _,
                 operator: _,
                 right: _,
+            } => *id,
+            Expr::Set {
+                id,
+                object: _,
+                name: _,
+                value: _,
             } => *id,
             Expr::Unary {
                 id,
@@ -354,8 +372,11 @@ impl Expr {
                 paren: _,
                 arguments,
             } => format!("({} {:?})", (*callee).to_string(), arguments),
-            Expr::Get { id: _, object, name } =>
-                format!("(get {} {})", object.to_string(), name.lexeme),
+            Expr::Get {
+                id: _,
+                object,
+                name,
+            } => format!("(get {} {})", object.to_string(), name.lexeme),
             Expr::Grouping { id: _, expression } => {
                 format!("(group {})", (*expression).to_string())
             }
@@ -370,6 +391,17 @@ impl Expr {
                 operator.to_string(),
                 left.to_string(),
                 right.to_string()
+            ),
+            Expr::Set {
+                id: _,
+                object,
+                name,
+                value,
+            } => format!(
+                "(set {} {} {})",
+                object.to_string(),
+                name.to_string(),
+                value.to_string()
             ),
             Expr::Unary {
                 id: _,
@@ -498,7 +530,7 @@ impl Expr {
                         }
                         Ok(LoxInstance {
                             class: Box::new(callable.clone()),
-                            fields: vec![],
+                            fields: Rc::new(RefCell::new(vec![])),
                         })
                     }
                     other => Err(format!("{} is not callable", other.to_type())),
@@ -531,19 +563,58 @@ impl Expr {
                 }
                 ttype => Err(format!("Invalid token in logical expression: {}", ttype)),
             },
-            Expr::Get { id: _, object, name } => {
+            Expr::Get {
+                id: _,
+                object,
+                name,
+            } => {
                 let obj_value = object.evaluate(environment.clone(), locals.clone())?;
                 // Now obj_value should be a LoxInstance
                 if let LoxInstance { class: _, fields } = obj_value {
-                    for (field_name, value) in fields {
-                        if field_name == name.lexeme {
-                            return Ok(value);
+                    for (field_name, value) in (*fields.borrow()).iter() {
+                        if field_name == &name.lexeme {
+                            return Ok(value.clone());
                         }
                     }
                     Err(format!("No field named {} on this instance", name.lexeme))
                 } else {
                     Err(format!(
                         "Cannot access property on type {}",
+                        obj_value.to_type()
+                    ))
+                }
+            }
+            Expr::Set {
+                id: _,
+                object, //object.name = value
+                name,
+                value,
+            } => {
+                let obj_value = object.evaluate(environment.clone(), locals.clone())?;
+                if let LoxInstance { class: _, fields } = obj_value {
+                    let value = value.evaluate(environment.clone(), locals.clone())?;
+
+                    let mut idx = 0;
+                    let mut found = false;
+                    for i in 0..(*fields.borrow()).len() {
+                        let field_name = &(*fields.borrow())[i].0;
+                        if field_name == &name.lexeme {
+                            idx = i;
+                            found = true;
+                            break;
+                        }
+                    }
+                    
+                    if found {
+                        (*fields.borrow_mut())[idx].1 = value.clone();
+                    } else {
+                        (*fields.borrow_mut()).push((name.lexeme.clone(), value));
+                    }
+                    
+                    Ok(Nil)
+                } else {
+                    Err(format!(
+                        "Cannot set property on type {}",
                         obj_value.to_type()
                     ))
                 }
