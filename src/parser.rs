@@ -365,7 +365,7 @@ impl Parser {
                         id: self.get_id(),
                         object,
                         name,
-                        value: 1Box::new(value),
+                        value: Box::new(value),
                     })
                 }
                 _ => Err("Invalid assignment target.".to_string()),
