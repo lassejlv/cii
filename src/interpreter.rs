@@ -2,49 +2,43 @@ use crate::environment::Environment;
 use crate::expr::LiteralValue;
 use crate::scanner::Token;
 use crate::stmt::Stmt;
-use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 pub struct Interpreter {
-    pub specials: Rc<RefCell<HashMap<String, LiteralValue>>>,
-    pub environment: Rc<RefCell<Environment>>,
-    pub locals: Rc<RefCell<HashMap<usize, usize>>>,
+    pub specials: HashMap<String, LiteralValue>,
+    pub environment: Environment,
 }
 
 impl Interpreter {
     pub fn new() -> Self {
         Self {
-            specials: Rc::new(RefCell::new(HashMap::new())),
-            environment: Rc::new(RefCell::new(Environment::new())),
-            locals: Rc::new(RefCell::new(HashMap::new())),
+            specials: HashMap::new(),
+            environment: Environment::new(HashMap::new()),
         }
     }
 
-    fn for_closure(
-        parent: Rc<RefCell<Environment>>,
-        locals: Rc<RefCell<HashMap<usize, usize>>>,
-    ) -> Self {
-        let environment = Rc::new(RefCell::new(Environment::new()));
-        environment.borrow_mut().enclosing = Some(parent);
+    pub fn resolve(&mut self, locals: HashMap<usize, usize>) {
+        self.environment.resolve(locals);
+    }
 
+    fn for_closure(
+        parent: Environment,
+    ) -> Self {
+        let environment = parent.enclose(); 
         Self {
-            specials: Rc::new(RefCell::new(HashMap::new())),
+            specials: HashMap::new(),
             environment,
-            locals: locals,
         }
     }
 
     pub fn for_anon(
-        parent: Rc<RefCell<Environment>>,
-        locals: Rc<RefCell<HashMap<usize, usize>>>,
+        parent: Environment,
     ) -> Self {
-        let mut env = Environment::new();
-        env.enclosing = Some(parent);
+        let env = parent.enclose();
         Self {
-            specials: Rc::new(RefCell::new(HashMap::new())),
-            environment: Rc::new(RefCell::new(env)),
-            locals,
+            specials: HashMap::new(),
+            environment: env,
         }
     }
 
@@ -52,34 +46,34 @@ impl Interpreter {
         for stmt in stmts {
             match stmt {
                 Stmt::Expression { expression } => {
-                    expression.evaluate(self.environment.clone(), self.locals.clone())?;
+                    expression.evaluate(self.environment.clone())?;
                 }
                 Stmt::Print { expression } => {
                     let value =
-                        expression.evaluate(self.environment.clone(), self.locals.clone())?;
+                        expression.evaluate(self.environment.clone())?;
                     println!("{}", value.to_string());
                 }
                 Stmt::Var { name, initializer } => {
                     let value =
-                        initializer.evaluate(self.environment.clone(), self.locals.clone())?;
+                        initializer.evaluate(self.environment.clone())?;
                     self.environment
-                        .borrow_mut()
                         .define(name.lexeme.clone(), value);
                 }
                 Stmt::Block { statements } => {
-                    let mut new_environment = Environment::new();
-                    new_environment.enclosing = Some(self.environment.clone());
+                    let new_environment = self.environment.enclose();
+                    
+                    //     Environment::new();
+                    // new_environment.enclosing = Some(Box::new(self.environment.clone()));
                     let old_environment = self.environment.clone();
-                    self.environment = Rc::new(RefCell::new(new_environment));
+                    self.environment = new_environment;
                     let block_result =
                         self.interpret((*statements).iter().map(|b| b.as_ref()).collect());
                     self.environment = old_environment;
-
+                    // self.environment = self.environment.enclosing.unwrap();
                     block_result?;
                 }
                 Stmt::Class { name, methods: _ } => {
                     self.environment
-                        .borrow_mut()
                         .define(name.lexeme.clone(), LiteralValue::Nil);
                     let klass = LiteralValue::LoxClass {
                         name: name.lexeme.clone(),
@@ -87,8 +81,7 @@ impl Interpreter {
 
                     if !self
                         .environment
-                        .borrow_mut()
-                        .assign(&name.lexeme, klass, None)
+                        .assign_global(&name.lexeme, klass)
                     {
                         return Err(format!("Class definition failed for {}", name.lexeme));
                     }
@@ -99,7 +92,7 @@ impl Interpreter {
                     els,
                 } => {
                     let truth_value =
-                        predicate.evaluate(self.environment.clone(), self.locals.clone())?;
+                        predicate.evaluate(self.environment.clone())?;
                     if truth_value.is_truthy() == LiteralValue::True {
                         let statements = vec![then.as_ref()];
                         self.interpret(statements)?;
@@ -110,11 +103,11 @@ impl Interpreter {
                 }
                 Stmt::WhileStmt { condition, body } => {
                     let mut flag =
-                        condition.evaluate(self.environment.clone(), self.locals.clone())?;
+                        condition.evaluate(self.environment.clone())?;
                     while flag.is_truthy() == LiteralValue::True {
                         let statements = vec![body.as_ref()];
                         self.interpret(statements)?;
-                        flag = condition.evaluate(self.environment.clone(), self.locals.clone())?;
+                        flag = condition.evaluate(self.environment.clone())?;
                     }
                 }
                 Stmt::Function { name, params, body } => {
@@ -132,15 +125,13 @@ impl Interpreter {
                     // and which implements Fn
 
                     let parent_env = self.environment.clone();
-                    let parent_locals = self.locals.clone();
                     let fun_impl = move |args: &Vec<LiteralValue>| {
                         let mut clos_int =
-                            Interpreter::for_closure(parent_env.clone(), parent_locals.clone());
+                            Interpreter::for_closure(parent_env.clone());
 
                         for (i, arg) in args.iter().enumerate() {
                             clos_int
                                 .environment
-                                .borrow_mut()
                                 .define(params[i].lexeme.clone(), (*arg).clone());
                         }
 
@@ -149,7 +140,7 @@ impl Interpreter {
                                 .interpret(vec![body[i].as_ref()])
                                 .expect(&format!("Evaluating failed inside {}", name_clone));
 
-                            if let Some(value) = clos_int.specials.borrow().get("return") {
+                            if let Some(value) = clos_int.specials.get("return") {
                                 return value.clone();
                             }
                         }
@@ -164,29 +155,21 @@ impl Interpreter {
                     };
 
                     self.environment
-                        .borrow_mut()
                         .define(name.lexeme.clone(), callable);
                 }
                 Stmt::ReturnStmt { keyword: _, value } => {
                     let eval_val;
                     if let Some(value) = value {
-                        eval_val = value.evaluate(self.environment.clone(), self.locals.clone())?;
+                        eval_val = value.evaluate(self.environment.clone())?;
                     } else {
                         eval_val = LiteralValue::Nil;
                     }
                     self.specials
-                        .borrow_mut()
                         .insert("return".to_string(), eval_val);
                 }
             };
         }
 
-        Ok(())
-    }
-
-    // TODO Try the trick with addresses again
-    pub fn resolve(&mut self, id: usize, steps: usize) -> Result<(), String> {
-        self.locals.borrow_mut().insert(id, steps);
         Ok(())
     }
 }

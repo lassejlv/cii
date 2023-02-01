@@ -3,10 +3,11 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
+#[derive(Clone)]
 pub struct Environment {
-    //globals: Rc<RefCell<HashMap<String, LiteralValue>>>,
-    values: HashMap<String, LiteralValue>,
-    pub enclosing: Option<Rc<RefCell<Environment>>>,
+    values: Rc<RefCell<HashMap<String, LiteralValue>>>,
+    locals: Rc<RefCell<HashMap<usize, usize>>>,
+    pub enclosing: Option<Box<Environment>>,
 }
 
 fn clock_impl(_args: &Vec<LiteralValue>) -> LiteralValue {
@@ -18,7 +19,7 @@ fn clock_impl(_args: &Vec<LiteralValue>) -> LiteralValue {
     LiteralValue::Number(now as f64 / 1000.0)
 }
 
-fn get_globals() -> HashMap<String, LiteralValue> {
+fn get_globals() -> Rc<RefCell<HashMap<String, LiteralValue>>> {
     let mut env = HashMap::new();
     env.insert(
         "clock".to_string(),
@@ -29,50 +30,80 @@ fn get_globals() -> HashMap<String, LiteralValue> {
         },
     );
 
-    env
+    Rc::new(RefCell::new(env))
 }
 
 impl Environment {
-    pub fn new() -> Self {
+    pub fn new(locals: HashMap<usize, usize>) -> Self {
         Self {
-            //globals: Rc::new(RefCell::new(get_globals())),
             values: get_globals(),
-            // values: HashMap::new(),
+            locals: Rc::new(RefCell::new(locals)),
             enclosing: None,
         }
     }
 
-    pub fn define(&mut self, name: String, value: LiteralValue) {
-        self.values.insert(name, value);
+    pub fn resolve(&self, locals: HashMap<usize, usize>) {
+        // self.locals = locals --! Bad because it wont update enclosing
+        for (key, val) in locals.iter() {
+            self.locals.borrow_mut().insert(*key, *val);
+        }
     }
 
-    pub fn get(&self, name: &str, distance: Option<usize>) -> Option<LiteralValue> {
+    pub fn enclose(&self) -> Environment {
+        Self {
+            values: Rc::new(RefCell::new(HashMap::new())),
+            locals: self.locals.clone(),
+            enclosing: Some(Box::new(self.clone())),
+        }
+    }
+
+    pub fn define(&self, name: String, value: LiteralValue) {
+        self.values.borrow_mut().insert(name, value);
+    }
+
+    pub fn get(&self, name: &str, expr_id: usize) -> Option<LiteralValue> {
+        let distance = self.locals.borrow().get(&expr_id).cloned();
+        self.get_internal(name, distance)
+    }
+
+    
+    fn get_internal(&self, name: &str, distance: Option<usize>) -> Option<LiteralValue> {    
         if let None = distance {
             match &self.enclosing {
-                None => self.values.get(name).cloned(),
-                Some(env) => env.borrow().get(name, distance),
+                None => self.values.borrow().get(name).cloned(),
+                Some(env) => env.get_internal(name, distance),
             }
         } else {
             let distance = distance.unwrap();
             if distance == 0 {
-                self.values.get(name).cloned()
+                self.values.borrow().get(name).cloned()
             } else {
                 match &self.enclosing {
                     None => panic!("Tried to resolve a variable that was defined deeper than the current environment depth"),
                     Some(env) => {
                         assert!(distance > 0);
-                        env.borrow().get(name, Some(distance - 1))
+                        env.get_internal(name, Some(distance - 1))
                     }
                 }
             }
         }
     }
 
-    pub fn assign(&mut self, name: &str, value: LiteralValue, distance: Option<usize>) -> bool {
+    pub fn assign_global(&self, name: &str, value: LiteralValue) -> bool {
+        self.assign_internal(name, value, None)
+    }
+
+    pub fn assign(&self, name: &str, value: LiteralValue, expr_id: usize) -> bool {
+        // ! Important that this ID matches with the resolver
+        let distance = self.locals.borrow().get(&expr_id).cloned();
+        self.assign_internal(name, value, distance)
+    }
+        
+    fn assign_internal(&self, name: &str, value: LiteralValue, distance: Option<usize>) -> bool {
         if let None = distance {
             match &self.enclosing {
-                Some(env) => env.borrow_mut().assign(name, value, distance),
-                None => match self.values.insert(name.to_string(), value) {
+                Some(env) => env.assign_internal(name, value, distance),
+                None => match self.values.borrow_mut().insert(name.to_string(), value) {
                     Some(_) => true,
                     None => false,
                 },
@@ -80,12 +111,12 @@ impl Environment {
         } else {
             let distance = distance.unwrap();
             if distance == 0 {
-                self.values.insert(name.to_string(), value);
+                self.values.borrow_mut().insert(name.to_string(), value);
                 true
             } else {
                 match &self.enclosing {
                     None => panic!("Tried to define a variable in a too deep level"),
-                    Some(env) => env.borrow_mut().assign(name, value, Some(distance - 1)),
+                    Some(env) => env.assign_internal(name, value, Some(distance - 1)),
                 };
                 true
             }
@@ -98,6 +129,6 @@ mod tests {
     use super::*;
     #[test]
     fn try_init() {
-        let _environment = Environment::new();
+        let _environment = Environment::new(HashMap::new());
     }
 }

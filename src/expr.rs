@@ -4,7 +4,6 @@ use crate::scanner;
 use crate::scanner::{Token, TokenType};
 use std::cell::RefCell;
 use std::cmp::{Eq, PartialEq};
-use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 
@@ -418,8 +417,7 @@ impl Expr {
 
     pub fn evaluate(
         &self,
-        environment: Rc<RefCell<Environment>>,
-        locals: Rc<RefCell<HashMap<usize, usize>>>,
+        environment: Environment,
     ) -> Result<LiteralValue, String> {
         match self {
             Expr::AnonFunction {
@@ -430,18 +428,15 @@ impl Expr {
             } => {
                 // We have to clone everything so the borrow checker doesnt get scared about us taking ownership of the values in the Expr
                 let arity = arguments.len();
-                let env = environment.clone();
-                let locals = locals.clone();
                 let arguments: Vec<Token> = arguments.iter().map(|t| (*t).clone()).collect();
                 let body: Vec<Box<Stmt>> = body.iter().map(|b| (*b).clone()).collect();
                 let paren = paren.clone();
 
                 let fun_impl = move |args: &Vec<LiteralValue>| {
-                    let mut anon_int = Interpreter::for_anon(env.clone(), locals.clone());
+                    let mut anon_int = Interpreter::for_anon(environment.clone());
                     for (i, arg) in args.iter().enumerate() {
                         anon_int
                             .environment
-                            .borrow_mut()
                             .define(arguments[i].lexeme.clone(), (*arg).clone());
                     }
 
@@ -451,7 +446,7 @@ impl Expr {
                             paren.line_number
                         ));
 
-                        if let Some(value) = anon_int.specials.borrow().get("return") {
+                        if let Some(value) = anon_int.specials.get("return") {
                             return value.clone();
                         }
                     }
@@ -466,15 +461,10 @@ impl Expr {
                 })
             }
             Expr::Assign { id: _, name, value } => {
-                let distance = locals.borrow().get(&self.get_id()).cloned();
-                //.ok_or_else(|| format!("Couldnt resolve assignment to {name:?}"))?;
-                // Can be None if global
-                // ! Important that this matches with the resolver
-                let new_value = (*value).evaluate(environment.clone(), locals.clone())?;
+                let new_value = (*value).evaluate(environment.clone())?;
                 let assign_success =
                     environment
-                        .borrow_mut()
-                        .assign(&name.lexeme, new_value.clone(), distance);
+                        .assign(&name.lexeme, new_value.clone(), self.get_id());
 
                 if assign_success {
                     Ok(new_value)
@@ -483,11 +473,10 @@ impl Expr {
                 }
             }
             Expr::Variable { id: _, name } => {
-                let distance = locals.borrow().get(&self.get_id()).cloned();
-                match environment.borrow().get(&name.lexeme, distance) {
+                match environment.get(&name.lexeme, self.get_id()) {
                     Some(value) => Ok(value.clone()),
                     None => Err(format!(
-                        "Variable '{}' has not been declared at distance {distance:?}",
+                        "Variable '{}' has not been declared at distance",
                         name.lexeme
                     )),
                 }
@@ -501,7 +490,7 @@ impl Expr {
                 // Look up function definition in environment
                 // let callable_distance = locals.borrow().get(&self.get_id());
                 let callable: LiteralValue =
-                    (*callee).evaluate(environment.clone(), locals.clone())?;
+                    (*callee).evaluate(environment.clone())?;
                 match callable {
                     Callable { name, arity, fun } => {
                         // Do some checking (correct number of args?)
@@ -516,7 +505,7 @@ impl Expr {
                         // Evaluate arguments
                         let mut arg_vals = vec![];
                         for arg in arguments {
-                            let val = arg.evaluate(environment.clone(), locals.clone())?;
+                            let val = arg.evaluate(environment.clone())?;
                             arg_vals.push(val);
                         }
                         // Apply to arguments
@@ -544,21 +533,21 @@ impl Expr {
                 right,
             } => match operator.token_type {
                 TokenType::Or => {
-                    let lhs_value = left.evaluate(environment.clone(), locals.clone())?;
+                    let lhs_value = left.evaluate(environment.clone())?;
                     let lhs_true = lhs_value.is_truthy();
                     if lhs_true == True {
                         Ok(lhs_value)
                     } else {
-                        right.evaluate(environment.clone(), locals.clone())
+                        right.evaluate(environment.clone())
                     }
                 }
                 TokenType::And => {
-                    let lhs_value = left.evaluate(environment.clone(), locals.clone())?;
+                    let lhs_value = left.evaluate(environment.clone())?;
                     let lhs_true = lhs_value.is_truthy();
                     if lhs_true == False {
                         Ok(lhs_true)
                     } else {
-                        right.evaluate(environment.clone(), locals.clone())
+                        right.evaluate(environment.clone())
                     }
                 }
                 ttype => Err(format!("Invalid token in logical expression: {}", ttype)),
@@ -568,7 +557,7 @@ impl Expr {
                 object,
                 name,
             } => {
-                let obj_value = object.evaluate(environment.clone(), locals.clone())?;
+                let obj_value = object.evaluate(environment.clone())?;
                 // Now obj_value should be a LoxInstance
                 if let LoxInstance { class: _, fields } = obj_value {
                     for (field_name, value) in (*fields.borrow()).iter() {
@@ -590,9 +579,9 @@ impl Expr {
                 name,
                 value,
             } => {
-                let obj_value = object.evaluate(environment.clone(), locals.clone())?;
+                let obj_value = object.evaluate(environment.clone())?;
                 if let LoxInstance { class: _, fields } = obj_value {
-                    let value = value.evaluate(environment.clone(), locals.clone())?;
+                    let value = value.evaluate(environment.clone())?;
 
                     let mut idx = 0;
                     let mut found = false;
@@ -620,14 +609,14 @@ impl Expr {
                 }
             }
             Expr::Grouping { id: _, expression } => {
-                expression.evaluate(environment, locals.clone())
+                expression.evaluate(environment)
             }
             Expr::Unary {
                 id: _,
                 operator,
                 right,
             } => {
-                let right = right.evaluate(environment, locals.clone())?;
+                let right = right.evaluate(environment)?;
 
                 match (&right, operator.token_type) {
                     (Number(x), TokenType::Minus) => Ok(Number(-x)),
@@ -644,8 +633,8 @@ impl Expr {
                 operator,
                 right,
             } => {
-                let left = left.evaluate(environment.clone(), locals.clone())?;
-                let right = right.evaluate(environment.clone(), locals.clone())?;
+                let left = left.evaluate(environment.clone())?;
+                let right = right.evaluate(environment.clone())?;
 
                 match (&left, operator.token_type, &right) {
                     (Number(x), TokenType::Plus, Number(y)) => Ok(Number(x + y)),
