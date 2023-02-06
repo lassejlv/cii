@@ -18,7 +18,7 @@ pub enum Stmt {
     },
     Class {
         name: Token,
-        methods: Vec<Box<Stmt>>,
+        methods: Vec<Expr>,
     },
     IfStmt {
         predicate: Expr,

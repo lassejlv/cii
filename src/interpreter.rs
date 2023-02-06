@@ -1,5 +1,5 @@
 use crate::environment::Environment;
-use crate::expr::LiteralValue;
+use crate::expr::{ LiteralValue, Expr };
 use crate::scanner::Token;
 use crate::stmt::Stmt;
 use std::collections::HashMap;
@@ -72,11 +72,23 @@ impl Interpreter {
                     // self.environment = self.environment.enclosing.unwrap();
                     block_result?;
                 }
-                Stmt::Class { name, methods: _ } => {
+                Stmt::Class { name, methods } => {
                     self.environment
                         .define(name.lexeme.clone(), LiteralValue::Nil);
+
+                    let mut methods_map = HashMap::new();
+                    for method in methods {
+                        if let Expr::AnonFunction { id:_, paren: _, arguments: _, body: _} = method {
+                            let function = method.evaluate(self.environment.clone())?; 
+                            methods_map.insert(name.lexeme.clone(), function);
+                        } else {
+                            panic!("Something that was not a function was in the methods of a class");
+                        }
+                    }
+
                     let klass = LiteralValue::LoxClass {
                         name: name.lexeme.clone(),
+                        methods: methods_map,
                     };
 
                     if !self

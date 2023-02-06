@@ -70,8 +70,8 @@ impl Parser {
 
         let mut methods = vec![];
         while !self.check(RightBrace) && !self.is_at_end() {
-            let method = self.function(FunctionKind::Method)?;
-            methods.push(Box::new(method));
+            let method = self.function_expression()?;
+            methods.push(method);
         }
 
         self.consume(RightBrace, "Expected '}' after class body.")?;

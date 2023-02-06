@@ -6,6 +6,7 @@ use std::cell::RefCell;
 use std::cmp::{Eq, PartialEq};
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub enum LiteralValue {
@@ -21,6 +22,7 @@ pub enum LiteralValue {
     },
     LoxClass {
         name: String,
+        methods: HashMap<String, LiteralValue>,
         //methods: Vec<(String, LiteralValue)>, // TODO Could also add static fields?
     },
     LoxInstance {
@@ -77,7 +79,7 @@ fn unwrap_as_string(literal: Option<scanner::LiteralValue>) -> String {
 
 macro_rules! class_name {
     ($class:expr) => {{
-        if let LiteralValue::LoxClass { name } = &**$class {
+        if let LiteralValue::LoxClass { name, methods } = &**$class {
             name
         } else {
             panic!("Unreachable")
@@ -98,7 +100,7 @@ impl LiteralValue {
                 arity,
                 fun: _,
             } => format!("{name}/{arity}"),
-            LiteralValue::LoxClass { name } => format!("Class '{name}'"),
+            LiteralValue::LoxClass { name, methods } => format!("Class '{name}'"),
             LiteralValue::LoxInstance { class, fields: _ } => {
                 format!("Instance of '{}'", class_name!(class))
             }
@@ -117,7 +119,7 @@ impl LiteralValue {
                 arity: _,
                 fun: _,
             } => "Callable",
-            LiteralValue::LoxClass { name: _ } => "Class",
+            LiteralValue::LoxClass { name: _ , methods: _} => "Class",
             LiteralValue::LoxInstance { class, fields: _ } => &class_name!(class),
         }
     }
@@ -165,7 +167,7 @@ impl LiteralValue {
                 arity: _,
                 fun: _,
             } => panic!("Cannot use Callable as a falsy value"),
-            LoxClass { name: _ } => panic!("Cannot use class as a falsy value"),
+            LoxClass { name: _, methods: _ } => panic!("Cannot use class as a falsy value"),
             _ => panic!("Not valid as a boolean value"),
         }
     }
@@ -194,7 +196,7 @@ impl LiteralValue {
                 arity: _,
                 fun: _,
             } => panic!("Can not use callable as a truthy value"),
-            LoxClass { name: _ } => panic!("Cannot use class as a truthy value"),
+            LoxClass { name: _, methods: _ } => panic!("Cannot use class as a truthy value"),
             _ => panic!("Not valid as a boolean value"),
         }
     }
@@ -511,7 +513,7 @@ impl Expr {
                         // Apply to arguments
                         Ok(fun(&arg_vals))
                     }
-                    LoxClass { name: _ } => {
+                    LoxClass { name: _, methods: _ } => {
                         if arguments.len() != 0 {
                             return Err(
                                 "Can only call the constructor with zero arguments".to_string()

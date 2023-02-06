@@ -7,6 +7,7 @@ use std::collections::HashMap;
 enum FunctionType {
     None,
     Function,
+    Method,
 }
 
 #[allow(dead_code)]
@@ -32,7 +33,11 @@ impl Resolver {
                 name: _,
                 initializer: _,
             } => self.resolve_var(stmt)?,
-            Stmt::Class { name, methods: _ } => {
+            Stmt::Class { name, methods } => {
+                for method in methods {
+                    let declaration = FunctionType::Method;
+                    self.resolve_method(method, declaration)?;
+                }
                 self.declare(name)?;
                 self.define(name);
             }
@@ -40,7 +45,7 @@ impl Resolver {
                 name: _,
                 params: _,
                 body: _,
-            } => self.resolve_function(stmt)?,
+            } => self.resolve_function(stmt, FunctionType::Function)?,
             Stmt::Expression { expression } => self.resolve_expr(expression)?,
             Stmt::IfStmt {
                 predicate: _,
@@ -103,7 +108,7 @@ impl Resolver {
         Ok(())
     }
 
-    fn resolve_function(&mut self, stmt: &Stmt) -> Result<(), String> {
+    fn resolve_function(&mut self, stmt: &Stmt, fn_type: FunctionType) -> Result<(), String> {
         if let Stmt::Function { name, params, body } = stmt {
             self.declare(name)?;
             self.define(name);
@@ -111,13 +116,34 @@ impl Resolver {
             self.resolve_function_helper(
                 params,
                 &body.iter().map(|b| b.as_ref()).collect(),
-                FunctionType::Function,
+                fn_type,
             )
         } else {
             panic!("Wrong type in resolve function");
         }
     }
 
+    fn resolve_method(&mut self, method: &Expr, fn_type: FunctionType) -> Result<(), String> {
+
+        if let Expr::AnonFunction { id:_, paren: _, arguments: _, body: _} = method {
+            let function = method.evaluate(self.environment.clone())?; 
+            methods_map.insert(name.lexeme.clone(), function);
+        } else {
+            panic!("Something that was not a function was in the methods of a class");
+        }
+        if let Stmt::Function { name, params, body } = stmt {
+            self.declare(name)?;
+            self.define(name);
+
+            self.resolve_function_helper(
+                params,
+                &body.iter().map(|b| b.as_ref()).collect(),
+                fn_type,
+            )
+        } else {
+            panic!("Wrong type in resolve function");
+        }
+    }
     fn resolve_if_stmt(&mut self, stmt: &Stmt) -> Result<(), String> {
         if let Stmt::IfStmt {
             predicate,
