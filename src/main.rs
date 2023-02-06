@@ -59,8 +59,11 @@ fn run_prompt() -> Result<(), String> {
         let mut handle = stdin.lock();
         match handle.read_line(&mut buffer) {
             Ok(n) => {
-                if n <= 1 {
+                if n == 0 {
+                    println!("");
                     return Ok(());
+                } else if n == 1 {
+                    continue;
                 }
             }
             Err(_) => return Err("Couldnt read line".to_string()),
