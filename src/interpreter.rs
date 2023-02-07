@@ -1,5 +1,5 @@
 use crate::environment::Environment;
-use crate::expr::{ LiteralValue, Expr };
+use crate::expr::LiteralValue;
 use crate::scanner::Token;
 use crate::stmt::Stmt;
 use std::collections::HashMap;
@@ -78,8 +78,8 @@ impl Interpreter {
 
                     let mut methods_map = HashMap::new();
                     for method in methods {
-                        if let Expr::AnonFunction { id:_, paren: _, arguments: _, body: _} = method {
-                            let function = method.evaluate(self.environment.clone())?; 
+                        if let Stmt::Function { name, params: _, body: _ } = method.as_ref() {
+                            let function = self.make_function(method);
                             methods_map.insert(name.lexeme.clone(), function);
                         } else {
                             panic!("Something that was not a function was in the methods of a class");
@@ -122,50 +122,8 @@ impl Interpreter {
                         flag = condition.evaluate(self.environment.clone())?;
                     }
                 }
-                Stmt::Function { name, params, body } => {
-                    // Function decl
-                    let arity = params.len();
-                    // Function impl:
-                    // Bind list of input values to names in params
-                    // Add those bindings to the environment used to execute body
-                    // Then execute body
-
-                    let params: Vec<Token> = params.iter().map(|t| (*t).clone()).collect();
-                    let body: Vec<Box<Stmt>> = body.iter().map(|b| (*b).clone()).collect();
-                    let name_clone = name.lexeme.clone();
-                    // TODO Make a struct that contains data for evaluation
-                    // and which implements Fn
-
-                    let parent_env = self.environment.clone();
-                    let fun_impl = move |args: &Vec<LiteralValue>| {
-                        let mut clos_int =
-                            Interpreter::for_closure(parent_env.clone());
-
-                        for (i, arg) in args.iter().enumerate() {
-                            clos_int
-                                .environment
-                                .define(params[i].lexeme.clone(), (*arg).clone());
-                        }
-
-                        for i in 0..(body.len()) {
-                            clos_int
-                                .interpret(vec![body[i].as_ref()])
-                                .expect(&format!("Evaluating failed inside {}", name_clone));
-
-                            if let Some(value) = clos_int.specials.get("return") {
-                                return value.clone();
-                            }
-                        }
-
-                        LiteralValue::Nil
-                    };
-
-                    let callable = LiteralValue::Callable {
-                        name: name.lexeme.clone(),
-                        arity,
-                        fun: Rc::new(fun_impl),
-                    };
-
+                Stmt::Function { name, params: _, body: _ } => {
+                    let callable = self.make_function(stmt);
                     self.environment
                         .define(name.lexeme.clone(), callable);
                 }
@@ -183,5 +141,54 @@ impl Interpreter {
         }
 
         Ok(())
+    }
+
+    fn make_function(&self, fn_stmt: &Stmt) -> LiteralValue {
+        if let Stmt::Function { name, params, body } = fn_stmt {
+            // Function decl
+            let arity = params.len();
+            // Function impl:
+            // Bind list of input values to names in params
+            // Add those bindings to the environment used to execute body
+            // Then execute body
+
+            let params: Vec<Token> = params.iter().map(|t| (*t).clone()).collect();
+            let body: Vec<Box<Stmt>> = body.iter().map(|b| (*b).clone()).collect();
+            let name_clone = name.lexeme.clone();
+            // TODO Make a struct that contains data for evaluation
+            // and which implements Fn
+
+            let parent_env = self.environment.clone();
+            let fun_impl = move |args: &Vec<LiteralValue>| {
+                let mut clos_int =
+                    Interpreter::for_closure(parent_env.clone());
+
+                for (i, arg) in args.iter().enumerate() {
+                    clos_int
+                        .environment
+                        .define(params[i].lexeme.clone(), (*arg).clone());
+                }
+
+                for i in 0..(body.len()) {
+                    clos_int
+                        .interpret(vec![body[i].as_ref()])
+                        .expect(&format!("Evaluating failed inside {}", name_clone));
+
+                    if let Some(value) = clos_int.specials.get("return") {
+                        return value.clone();
+                    }
+                }
+
+                LiteralValue::Nil
+            };
+
+            LiteralValue::Callable {
+                name: name.lexeme.clone(),
+                arity,
+                fun: Rc::new(fun_impl),
+            }
+        } else {
+            panic!("Tried to make a function from a non-function statement");
+        }
     }
 }

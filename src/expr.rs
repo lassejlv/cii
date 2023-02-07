@@ -8,6 +8,8 @@ use std::hash::{Hash, Hasher};
 use std::rc::Rc;
 use std::collections::HashMap;
 
+
+
 #[derive(Clone)]
 pub enum LiteralValue {
     Number(f64),
@@ -79,7 +81,7 @@ fn unwrap_as_string(literal: Option<scanner::LiteralValue>) -> String {
 
 macro_rules! class_name {
     ($class:expr) => {{
-        if let LiteralValue::LoxClass { name, methods } = &**$class {
+        if let LiteralValue::LoxClass { name, methods: _ } = &**$class {
             name
         } else {
             panic!("Unreachable")
@@ -100,7 +102,7 @@ impl LiteralValue {
                 arity,
                 fun: _,
             } => format!("{name}/{arity}"),
-            LiteralValue::LoxClass { name, methods } => format!("Class '{name}'"),
+            LiteralValue::LoxClass { name, methods: _ } => format!("Class '{name}'"),
             LiteralValue::LoxInstance { class, fields: _ } => {
                 format!("Instance of '{}'", class_name!(class))
             }
@@ -561,11 +563,18 @@ impl Expr {
             } => {
                 let obj_value = object.evaluate(environment.clone())?;
                 // Now obj_value should be a LoxInstance
-                if let LoxInstance { class: _, fields } = obj_value {
+                if let LoxInstance { class, fields } = obj_value {
                     for (field_name, value) in (*fields.borrow()).iter() {
                         if field_name == &name.lexeme {
                             return Ok(value.clone());
                         }
+                    }
+                    if let LoxClass { name: _, methods } = class.as_ref() { 
+                        if let Some(method) = methods.get(&name.lexeme) {
+                            return Ok(method.clone());
+                        }
+                    } else {
+                        panic!("The class field on an instance was not a LoxClass");
                     }
                     Err(format!("No field named {} on this instance", name.lexeme))
                 } else {

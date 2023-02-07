@@ -36,7 +36,7 @@ impl Resolver {
             Stmt::Class { name, methods } => {
                 for method in methods {
                     let declaration = FunctionType::Method;
-                    self.resolve_method(method, declaration)?;
+                    self.resolve_function(method, declaration)?;
                 }
                 self.declare(name)?;
                 self.define(name);
@@ -123,27 +123,6 @@ impl Resolver {
         }
     }
 
-    fn resolve_method(&mut self, method: &Expr, fn_type: FunctionType) -> Result<(), String> {
-
-        if let Expr::AnonFunction { id:_, paren: _, arguments: _, body: _} = method {
-            let function = method.evaluate(self.environment.clone())?; 
-            methods_map.insert(name.lexeme.clone(), function);
-        } else {
-            panic!("Something that was not a function was in the methods of a class");
-        }
-        if let Stmt::Function { name, params, body } = stmt {
-            self.declare(name)?;
-            self.define(name);
-
-            self.resolve_function_helper(
-                params,
-                &body.iter().map(|b| b.as_ref()).collect(),
-                fn_type,
-            )
-        } else {
-            panic!("Wrong type in resolve function");
-        }
-    }
     fn resolve_if_stmt(&mut self, stmt: &Stmt) -> Result<(), String> {
         if let Stmt::IfStmt {
             predicate,
