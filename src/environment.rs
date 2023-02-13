@@ -1,11 +1,11 @@
-use crate::expr::LiteralValue;
+use crate::expr::{LiteralValue, NativeFunctionImpl, CallableImpl};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
 #[derive(Clone)]
 pub struct Environment {
-    values: Rc<RefCell<HashMap<String, LiteralValue>>>,
+    pub values: Rc<RefCell<HashMap<String, LiteralValue>>>,
     locals: Rc<RefCell<HashMap<usize, usize>>>,
     pub enclosing: Option<Box<Environment>>,
 }
@@ -21,13 +21,15 @@ fn clock_impl(_args: &Vec<LiteralValue>) -> LiteralValue {
 
 fn get_globals() -> Rc<RefCell<HashMap<String, LiteralValue>>> {
     let mut env = HashMap::new();
+    let fun_impl = NativeFunctionImpl {
+        name: "clock".to_string(),
+        arity: 0,
+        fun: Rc::new(clock_impl), 
+    };
+    let callable_impl = CallableImpl::NativeFunction(fun_impl);
     env.insert(
         "clock".to_string(),
-        LiteralValue::Callable {
-            name: "clock".to_string(),
-            arity: 0,
-            fun: Rc::new(clock_impl),
-        },
+        LiteralValue::Callable(callable_impl),
     );
 
     Rc::new(RefCell::new(env))
@@ -39,6 +41,29 @@ impl Environment {
             values: get_globals(),
             locals: Rc::new(RefCell::new(locals)),
             enclosing: None,
+        }
+    }
+
+    pub fn deep_clone(&self) -> Self {
+        let mut new_locals = HashMap::new();
+        for (key, val) in self.locals.borrow().iter() {
+            new_locals.insert(*key, *val);
+        }
+
+        let mut new_values = HashMap::new();
+        for (key, val) in self.values.borrow().iter() {
+            new_values.insert(key.clone(), val.clone());
+        }
+
+        let enclosing = match &self.enclosing {
+            None => None,
+            Some(env) => Some(Box::new(env.deep_clone())),
+        };
+
+        Self {
+            values: Rc::new(RefCell::new(new_values)),
+            locals: Rc::new(RefCell::new(new_locals)),
+            enclosing,
         }
     }
 

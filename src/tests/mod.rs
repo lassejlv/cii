@@ -23,7 +23,6 @@ mod tests {
                 Err(msg) => {
                     errors.push(msg);
                     msgs.push(format!("Running {name:.<85}...failed"));
-                    break;
                 }
             }
         }

@@ -34,12 +34,16 @@ impl Resolver {
                 initializer: _,
             } => self.resolve_var(stmt)?,
             Stmt::Class { name, methods } => {
+                self.declare(name)?;
+                self.define(name);
+
+                self.begin_scope();
+                self.scopes.last_mut().unwrap().insert("this".to_string(), true);
                 for method in methods {
                     let declaration = FunctionType::Method;
                     self.resolve_function(method, declaration)?;
                 }
-                self.declare(name)?;
-                self.define(name);
+                self.end_scope();
             }
             Stmt::Function {
                 name: _,
@@ -254,6 +258,11 @@ impl Resolver {
                 self.resolve_expr(value)?;
                 self.resolve_expr(object)
             }
+            Expr::This {
+                id: _,
+                keyword,
+            } => 
+                self.resolve_local(keyword, expr.get_id()),
             Expr::Unary {
                 id: _,
                 operator: _,

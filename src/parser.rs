@@ -17,7 +17,7 @@ enum FunctionKind {
 impl Parser {
     pub fn new(tokens: Vec<Token>) -> Self {
         Self {
-            tokens: tokens,
+            tokens,
             current: 0,
             next_id: 0,
         }
@@ -137,7 +137,7 @@ impl Parser {
 
         Ok(Stmt::Var {
             name: token,
-            initializer: initializer,
+            initializer,
         })
     }
 
@@ -409,7 +409,7 @@ impl Parser {
             expr = Logical {
                 id: self.get_id(),
                 left: Box::new(expr),
-                operator: operator,
+                operator,
                 right: Box::new(right),
             };
         }
@@ -426,7 +426,7 @@ impl Parser {
             expr = Logical {
                 id: self.get_id(),
                 left: Box::new(expr),
-                operator: operator,
+                operator,
                 right: Box::new(right),
             };
         }
@@ -442,7 +442,7 @@ impl Parser {
             expr = Binary {
                 id: self.get_id(),
                 left: Box::from(expr),
-                operator: operator,
+                operator,
                 right: Box::from(rhs),
             };
         }
@@ -589,6 +589,13 @@ impl Parser {
                 result = Variable {
                     id: self.get_id(),
                     name: self.previous(),
+                };
+            }
+            TokenType::This => {
+                self.advance();
+                result = Expr::This {
+                    id: self.get_id(),
+                    keyword: token,
                 };
             }
             Fun => {

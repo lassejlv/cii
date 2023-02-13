@@ -4,11 +4,31 @@ use crate::scanner;
 use crate::scanner::{Token, TokenType};
 use std::cell::RefCell;
 use std::cmp::{Eq, PartialEq};
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::rc::Rc;
-use std::collections::HashMap;
 
+#[derive(Clone)]
+pub enum CallableImpl {
+    LoxFunction(LoxFunctionImpl),
+    NativeFunction(NativeFunctionImpl),
+}
 
+#[derive(Clone)]
+pub struct LoxFunctionImpl {
+    pub name: String,
+    pub arity: usize,
+    pub environment: Environment,
+    pub params: Vec<Token>,
+    pub body: Vec<Box<Stmt>>,
+}
+
+#[derive(Clone)]
+pub struct NativeFunctionImpl {
+    pub name: String,
+    pub arity: usize,
+    pub fun: Rc<dyn Fn(&Vec<LiteralValue>) -> LiteralValue>,
+}
 
 #[derive(Clone)]
 pub enum LiteralValue {
@@ -17,14 +37,10 @@ pub enum LiteralValue {
     True,
     False,
     Nil,
-    Callable {
-        name: String,
-        arity: usize,
-        fun: Rc<dyn Fn(&Vec<LiteralValue>) -> LiteralValue>,
-    },
+    Callable(CallableImpl),
     LoxClass {
         name: String,
-        methods: HashMap<String, LiteralValue>,
+        methods: HashMap<String, CallableImpl>,
         //methods: Vec<(String, LiteralValue)>, // TODO Could also add static fields?
     },
     LoxInstance {
@@ -45,16 +61,20 @@ impl PartialEq for LiteralValue {
         match (self, other) {
             (Number(x), Number(y)) => x == y,
             (
-                Callable {
-                    name,
-                    arity,
-                    fun: _,
-                },
-                Callable {
+                Callable(CallableImpl::LoxFunction(LoxFunctionImpl { name, arity, .. })),
+                Callable(CallableImpl::LoxFunction(LoxFunctionImpl {
                     name: name2,
                     arity: arity2,
-                    fun: _,
-                },
+                    ..
+                })),
+            ) => name == name2 && arity == arity2,
+            (
+                Callable(CallableImpl::NativeFunction(NativeFunctionImpl { name, arity, .. })),
+                Callable(CallableImpl::NativeFunction(NativeFunctionImpl {
+                    name: name2,
+                    arity: arity2,
+                    ..
+                })),
             ) => name == name2 && arity == arity2,
             (StringValue(x), StringValue(y)) => x == y,
             (True, True) => true,
@@ -97,11 +117,16 @@ impl LiteralValue {
             LiteralValue::True => "true".to_string(),
             LiteralValue::False => "false".to_string(),
             LiteralValue::Nil => "nil".to_string(),
-            LiteralValue::Callable {
+            LiteralValue::Callable(CallableImpl::LoxFunction(LoxFunctionImpl {
                 name,
                 arity,
-                fun: _,
-            } => format!("{name}/{arity}"),
+                ..
+            })) => format!("{name}/{arity}"),
+            LiteralValue::Callable(CallableImpl::NativeFunction(NativeFunctionImpl {
+                name,
+                arity,
+                ..
+            })) => format!("{name}/{arity}"),
             LiteralValue::LoxClass { name, methods: _ } => format!("Class '{name}'"),
             LiteralValue::LoxInstance { class, fields: _ } => {
                 format!("Instance of '{}'", class_name!(class))
@@ -116,12 +141,11 @@ impl LiteralValue {
             LiteralValue::True => "Boolean",
             LiteralValue::False => "Boolean",
             LiteralValue::Nil => "nil",
-            LiteralValue::Callable {
+            LiteralValue::Callable(_) => "Callable",
+            LiteralValue::LoxClass {
                 name: _,
-                arity: _,
-                fun: _,
-            } => "Callable",
-            LiteralValue::LoxClass { name: _ , methods: _} => "Class",
+                methods: _,
+            } => "Class",
             LiteralValue::LoxInstance { class, fields: _ } => &class_name!(class),
         }
     }
@@ -164,12 +188,11 @@ impl LiteralValue {
             True => False,
             False => True,
             Nil => True,
-            Callable {
+            Callable(_) => panic!("Cannot use Callable as a falsy value"),
+            LoxClass {
                 name: _,
-                arity: _,
-                fun: _,
-            } => panic!("Cannot use Callable as a falsy value"),
-            LoxClass { name: _, methods: _ } => panic!("Cannot use class as a falsy value"),
+                methods: _,
+            } => panic!("Cannot use class as a falsy value"),
             _ => panic!("Not valid as a boolean value"),
         }
     }
@@ -193,12 +216,11 @@ impl LiteralValue {
             True => True,
             False => False,
             Nil => False,
-            Callable {
+            Callable(_) => panic!("Cannot use Callable as a truthy value"),
+            LoxClass {
                 name: _,
-                arity: _,
-                fun: _,
-            } => panic!("Can not use callable as a truthy value"),
-            LoxClass { name: _, methods: _ } => panic!("Cannot use class as a truthy value"),
+                methods: _,
+            } => panic!("Cannot use class as a truthy value"),
             _ => panic!("Not valid as a boolean value"),
         }
     }
@@ -257,6 +279,10 @@ pub enum Expr {
         object: Box<Expr>,
         name: Token,
         value: Box<Expr>,
+    },
+    This {
+        id: usize,
+        keyword: Token,
     },
     Unary {
         id: usize,
@@ -337,6 +363,7 @@ impl Expr {
                 name: _,
                 value: _,
             } => *id,
+            Expr::This { id, keyword: _ } => *id,
             Expr::Unary {
                 id,
                 operator: _,
@@ -406,6 +433,7 @@ impl Expr {
                 name.to_string(),
                 value.to_string()
             ),
+            Expr::This { id: _, keyword: _ } => format!("(this)"),
             Expr::Unary {
                 id: _,
                 operator,
@@ -419,14 +447,11 @@ impl Expr {
         }
     }
 
-    pub fn evaluate(
-        &self,
-        environment: Environment,
-    ) -> Result<LiteralValue, String> {
+    pub fn evaluate(&self, environment: Environment) -> Result<LiteralValue, String> {
         match self {
             Expr::AnonFunction {
                 id: _,
-                paren,
+                paren: _,
                 arguments,
                 body,
             } => {
@@ -434,41 +459,21 @@ impl Expr {
                 let arity = arguments.len();
                 let arguments: Vec<Token> = arguments.iter().map(|t| (*t).clone()).collect();
                 let body: Vec<Box<Stmt>> = body.iter().map(|b| (*b).clone()).collect();
-                let paren = paren.clone();
 
-                let fun_impl = move |args: &Vec<LiteralValue>| {
-                    let mut anon_int = Interpreter::for_anon(environment.clone());
-                    for (i, arg) in args.iter().enumerate() {
-                        anon_int
-                            .environment
-                            .define(arguments[i].lexeme.clone(), (*arg).clone());
-                    }
-
-                    for i in 0..(body.len()) {
-                        anon_int.interpret(vec![&body[i]]).expect(&format!(
-                            "Evaluating failed inside anon function at line {}",
-                            paren.line_number
-                        ));
-
-                        if let Some(value) = anon_int.specials.get("return") {
-                            return value.clone();
-                        }
-                    }
-
-                    LiteralValue::Nil
-                };
-
-                Ok(Callable {
-                    name: "anon_function".to_string(),
+                let callable_impl = CallableImpl::LoxFunction(LoxFunctionImpl {
+                    name: "anon_funciton".to_string(),
                     arity,
-                    fun: Rc::new(fun_impl),
-                })
+                    environment: environment.clone(),
+                    params: arguments,
+                    body,
+                });
+
+                Ok(Callable(callable_impl))
             }
             Expr::Assign { id: _, name, value } => {
                 let new_value = (*value).evaluate(environment.clone())?;
                 let assign_success =
-                    environment
-                        .assign(&name.lexeme, new_value.clone(), self.get_id());
+                    environment.assign(&name.lexeme, new_value.clone(), self.get_id());
 
                 if assign_success {
                     Ok(new_value)
@@ -476,15 +481,13 @@ impl Expr {
                     Err(format!("Variable {} has not been declared", name.lexeme))
                 }
             }
-            Expr::Variable { id: _, name } => {
-                match environment.get(&name.lexeme, self.get_id()) {
-                    Some(value) => Ok(value.clone()),
-                    None => Err(format!(
-                        "Variable '{}' has not been declared at distance",
-                        name.lexeme
-                    )),
-                }
-            }
+            Expr::Variable { id: _, name } => match environment.get(&name.lexeme, self.get_id()) {
+                Some(value) => Ok(value.clone()),
+                None => Err(format!(
+                    "Variable '{}' has not been declared at distance",
+                    name.lexeme
+                )),
+            },
             Expr::Call {
                 id: _,
                 callee,
@@ -493,29 +496,22 @@ impl Expr {
             } => {
                 // Look up function definition in environment
                 // let callable_distance = locals.borrow().get(&self.get_id());
-                let callable: LiteralValue =
-                    (*callee).evaluate(environment.clone())?;
+                let callable: LiteralValue = (*callee).evaluate(environment.clone())?;
                 match callable {
-                    Callable { name, arity, fun } => {
-                        // Do some checking (correct number of args?)
-                        if arguments.len() != arity {
-                            return Err(format!(
-                                "Callable {} expected {} arguments but got {}",
-                                name,
-                                arity,
-                                arguments.len()
-                            ));
-                        }
-                        // Evaluate arguments
-                        let mut arg_vals = vec![];
-                        for arg in arguments {
-                            let val = arg.evaluate(environment.clone())?;
-                            arg_vals.push(val);
-                        }
-                        // Apply to arguments
-                        Ok(fun(&arg_vals))
+                    Callable(CallableImpl::LoxFunction(loxfun)) => {
+                        run_lox_function(loxfun, arguments, environment)
                     }
-                    LoxClass { name: _, methods: _ } => {
+                    Callable(CallableImpl::NativeFunction(nativefun)) => {
+                        let mut evaluated_arguments = vec![];
+                        for argument in arguments {
+                            evaluated_arguments.push(argument.evaluate(environment.clone())?);
+                        }
+                        Ok((nativefun.fun)(&evaluated_arguments))
+                    }
+                    LoxClass {
+                        name: _,
+                        methods: _,
+                    } => {
                         if arguments.len() != 0 {
                             return Err(
                                 "Can only call the constructor with zero arguments".to_string()
@@ -569,9 +565,10 @@ impl Expr {
                             return Ok(value.clone());
                         }
                     }
-                    if let LoxClass { name: _, methods } = class.as_ref() { 
+                    if let LoxClass { name: _, methods } = class.as_ref() {
                         if let Some(method) = methods.get(&name.lexeme) {
-                            return Ok(method.clone());
+                            let callable_impl = method.clone();
+                            return Ok(Callable(callable_impl));
                         }
                     } else {
                         panic!("The class field on an instance was not a LoxClass");
@@ -604,13 +601,13 @@ impl Expr {
                             break;
                         }
                     }
-                    
+
                     if found {
                         (*fields.borrow_mut())[idx].1 = value.clone();
                     } else {
                         (*fields.borrow_mut()).push((name.lexeme.clone(), value));
                     }
-                    
+
                     Ok(Nil)
                 } else {
                     Err(format!(
@@ -619,9 +616,8 @@ impl Expr {
                     ))
                 }
             }
-            Expr::Grouping { id: _, expression } => {
-                expression.evaluate(environment)
-            }
+            Expr::This { id: _, keyword: _ } => todo!(),
+            Expr::Grouping { id: _, expression } => expression.evaluate(environment),
             Expr::Unary {
                 id: _,
                 operator,
@@ -701,6 +697,49 @@ impl Expr {
     pub fn print(&self) {
         println!("{}", self.to_string());
     }
+}
+
+fn run_lox_function(
+    loxfun: LoxFunctionImpl,
+    arguments: &Vec<Expr>,
+    eval_env: Environment,
+) -> Result<LiteralValue, String> {
+    // Do some checking (correct number of args?)
+    if arguments.len() != loxfun.arity {
+        return Err(format!(
+            "Callable {} expected {} arguments but got {}",
+            loxfun.name,
+            loxfun.arity,
+            arguments.len()
+        ));
+    }
+
+    // Evaluate arguments
+    let mut arg_vals = vec![];
+    for arg in arguments {
+        let val = arg.evaluate(eval_env.clone())?;
+        arg_vals.push(val);
+    }
+
+    for (i, val) in arg_vals.iter().enumerate() {
+        loxfun
+            .environment
+            .define(loxfun.params[i].lexeme.clone(), (*val).clone());
+    }
+
+    let mut int = Interpreter::with_env(loxfun.environment.clone());
+    for i in 0..(loxfun.body.len()) {
+        int.interpret(vec![&loxfun.body[i]]).expect(&format!(
+            "Evaluating failed inside function at statement {}",
+            i
+        ));
+
+        if let Some(value) = int.specials.get("return") {
+            return Ok(value.clone());
+        }
+    }
+
+    Ok(LiteralValue::Nil)
 }
 
 #[cfg(test)]

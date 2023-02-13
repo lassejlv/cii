@@ -1,9 +1,8 @@
 use crate::environment::Environment;
-use crate::expr::LiteralValue;
+use crate::expr::{CallableImpl, LiteralValue, LoxFunctionImpl};
 use crate::scanner::Token;
 use crate::stmt::Stmt;
 use std::collections::HashMap;
-use std::rc::Rc;
 
 pub struct Interpreter {
     pub specials: HashMap<String, LiteralValue>,
@@ -22,19 +21,15 @@ impl Interpreter {
         self.environment.resolve(locals);
     }
 
-    fn for_closure(
-        parent: Environment,
-    ) -> Self {
-        let environment = parent.enclose(); 
+    pub fn with_env(env: Environment) -> Self {
         Self {
             specials: HashMap::new(),
-            environment,
+            environment: env,
         }
     }
 
-    pub fn for_anon(
-        parent: Environment,
-    ) -> Self {
+    #[allow(dead_code)]
+    pub fn for_anon(parent: Environment) -> Self {
         let env = parent.enclose();
         Self {
             specials: HashMap::new(),
@@ -49,19 +44,16 @@ impl Interpreter {
                     expression.evaluate(self.environment.clone())?;
                 }
                 Stmt::Print { expression } => {
-                    let value =
-                        expression.evaluate(self.environment.clone())?;
+                    let value = expression.evaluate(self.environment.clone())?;
                     println!("{}", value.to_string());
                 }
                 Stmt::Var { name, initializer } => {
-                    let value =
-                        initializer.evaluate(self.environment.clone())?;
-                    self.environment
-                        .define(name.lexeme.clone(), value);
+                    let value = initializer.evaluate(self.environment.clone())?;
+                    self.environment.define(name.lexeme.clone(), value);
                 }
                 Stmt::Block { statements } => {
                     let new_environment = self.environment.enclose();
-                    
+
                     //     Environment::new();
                     // new_environment.enclosing = Some(Box::new(self.environment.clone()));
                     let old_environment = self.environment.clone();
@@ -78,11 +70,18 @@ impl Interpreter {
 
                     let mut methods_map = HashMap::new();
                     for method in methods {
-                        if let Stmt::Function { name, params: _, body: _ } = method.as_ref() {
+                        if let Stmt::Function {
+                            name,
+                            params: _,
+                            body: _,
+                        } = method.as_ref()
+                        {
                             let function = self.make_function(method);
                             methods_map.insert(name.lexeme.clone(), function);
                         } else {
-                            panic!("Something that was not a function was in the methods of a class");
+                            panic!(
+                                "Something that was not a function was in the methods of a class"
+                            );
                         }
                     }
 
@@ -91,10 +90,7 @@ impl Interpreter {
                         methods: methods_map,
                     };
 
-                    if !self
-                        .environment
-                        .assign_global(&name.lexeme, klass)
-                    {
+                    if !self.environment.assign_global(&name.lexeme, klass) {
                         return Err(format!("Class definition failed for {}", name.lexeme));
                     }
                 }
@@ -103,8 +99,7 @@ impl Interpreter {
                     then,
                     els,
                 } => {
-                    let truth_value =
-                        predicate.evaluate(self.environment.clone())?;
+                    let truth_value = predicate.evaluate(self.environment.clone())?;
                     if truth_value.is_truthy() == LiteralValue::True {
                         let statements = vec![then.as_ref()];
                         self.interpret(statements)?;
@@ -114,18 +109,21 @@ impl Interpreter {
                     }
                 }
                 Stmt::WhileStmt { condition, body } => {
-                    let mut flag =
-                        condition.evaluate(self.environment.clone())?;
+                    let mut flag = condition.evaluate(self.environment.clone())?;
                     while flag.is_truthy() == LiteralValue::True {
                         let statements = vec![body.as_ref()];
                         self.interpret(statements)?;
                         flag = condition.evaluate(self.environment.clone())?;
                     }
                 }
-                Stmt::Function { name, params: _, body: _ } => {
+                Stmt::Function {
+                    name,
+                    params: _,
+                    body: _,
+                } => {
                     let callable = self.make_function(stmt);
-                    self.environment
-                        .define(name.lexeme.clone(), callable);
+                    let fun = LiteralValue::Callable(callable);
+                    self.environment.define(name.lexeme.clone(), fun);
                 }
                 Stmt::ReturnStmt { keyword: _, value } => {
                     let eval_val;
@@ -134,8 +132,7 @@ impl Interpreter {
                     } else {
                         eval_val = LiteralValue::Nil;
                     }
-                    self.specials
-                        .insert("return".to_string(), eval_val);
+                    self.specials.insert("return".to_string(), eval_val);
                 }
             };
         }
@@ -143,50 +140,26 @@ impl Interpreter {
         Ok(())
     }
 
-    fn make_function(&self, fn_stmt: &Stmt) -> LiteralValue {
+    fn make_function(&self, fn_stmt: &Stmt) -> CallableImpl {
         if let Stmt::Function { name, params, body } = fn_stmt {
-            // Function decl
             let arity = params.len();
-            // Function impl:
-            // Bind list of input values to names in params
-            // Add those bindings to the environment used to execute body
-            // Then execute body
-
             let params: Vec<Token> = params.iter().map(|t| (*t).clone()).collect();
             let body: Vec<Box<Stmt>> = body.iter().map(|b| (*b).clone()).collect();
             let name_clone = name.lexeme.clone();
-            // TODO Make a struct that contains data for evaluation
-            // and which implements Fn
-
+            
+            // TODO: Don't clone the whole environment, just the captured variables
             let parent_env = self.environment.clone();
-            let fun_impl = move |args: &Vec<LiteralValue>| {
-                let mut clos_int =
-                    Interpreter::for_closure(parent_env.clone());
+            let fun_env = parent_env.enclose();
 
-                for (i, arg) in args.iter().enumerate() {
-                    clos_int
-                        .environment
-                        .define(params[i].lexeme.clone(), (*arg).clone());
-                }
-
-                for i in 0..(body.len()) {
-                    clos_int
-                        .interpret(vec![body[i].as_ref()])
-                        .expect(&format!("Evaluating failed inside {}", name_clone));
-
-                    if let Some(value) = clos_int.specials.get("return") {
-                        return value.clone();
-                    }
-                }
-
-                LiteralValue::Nil
-            };
-
-            LiteralValue::Callable {
-                name: name.lexeme.clone(),
+            let callable_impl = CallableImpl::LoxFunction(LoxFunctionImpl {
+                name: name_clone,
                 arity,
-                fun: Rc::new(fun_impl),
-            }
+                environment: fun_env,
+                params,
+                body,
+            });
+
+            callable_impl
         } else {
             panic!("Tried to make a function from a non-function statement");
         }
