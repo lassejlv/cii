@@ -122,7 +122,7 @@ impl Interpreter {
                     body: _,
                 } => {
                     let callable = self.make_function(stmt);
-                    let fun = LiteralValue::Callable(callable);
+                    let fun = LiteralValue::Callable(CallableImpl::LoxFunction(callable));
                     self.environment.define(name.lexeme.clone(), fun);
                 }
                 Stmt::ReturnStmt { keyword: _, value } => {
@@ -140,24 +140,23 @@ impl Interpreter {
         Ok(())
     }
 
-    fn make_function(&self, fn_stmt: &Stmt) -> CallableImpl {
+    fn make_function(&self, fn_stmt: &Stmt) -> LoxFunctionImpl {
         if let Stmt::Function { name, params, body } = fn_stmt {
             let arity = params.len();
             let params: Vec<Token> = params.iter().map(|t| (*t).clone()).collect();
             let body: Vec<Box<Stmt>> = body.iter().map(|b| (*b).clone()).collect();
             let name_clone = name.lexeme.clone();
-            
+
             // TODO: Don't clone the whole environment, just the captured variables
             let parent_env = self.environment.clone();
-            let fun_env = parent_env.enclose();
 
-            let callable_impl = CallableImpl::LoxFunction(LoxFunctionImpl {
+            let callable_impl = LoxFunctionImpl {
                 name: name_clone,
                 arity,
-                environment: fun_env,
+                parent_env,
                 params,
                 body,
-            });
+            };
 
             callable_impl
         } else {

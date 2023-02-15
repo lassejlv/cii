@@ -44,29 +44,6 @@ impl Environment {
         }
     }
 
-    pub fn deep_clone(&self) -> Self {
-        let mut new_locals = HashMap::new();
-        for (key, val) in self.locals.borrow().iter() {
-            new_locals.insert(*key, *val);
-        }
-
-        let mut new_values = HashMap::new();
-        for (key, val) in self.values.borrow().iter() {
-            new_values.insert(key.clone(), val.clone());
-        }
-
-        let enclosing = match &self.enclosing {
-            None => None,
-            Some(env) => Some(Box::new(env.deep_clone())),
-        };
-
-        Self {
-            values: Rc::new(RefCell::new(new_values)),
-            locals: Rc::new(RefCell::new(new_locals)),
-            enclosing,
-        }
-    }
-
     pub fn resolve(&self, locals: HashMap<usize, usize>) {
         // self.locals = locals --! Bad because it wont update enclosing
         for (key, val) in locals.iter() {
@@ -89,6 +66,10 @@ impl Environment {
     pub fn get(&self, name: &str, expr_id: usize) -> Option<LiteralValue> {
         let distance = self.locals.borrow().get(&expr_id).cloned();
         self.get_internal(name, distance)
+    }
+
+    pub fn get_distance(&self, expr_id: usize) -> Option<usize> {
+        self.locals.borrow().get(&expr_id).cloned()
     }
 
     

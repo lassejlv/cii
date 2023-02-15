@@ -13,12 +13,13 @@ pub enum CallableImpl {
     LoxFunction(LoxFunctionImpl),
     NativeFunction(NativeFunctionImpl),
 }
+use CallableImpl::*;
 
 #[derive(Clone)]
 pub struct LoxFunctionImpl {
     pub name: String,
     pub arity: usize,
-    pub environment: Environment,
+    pub parent_env: Environment,
     pub params: Vec<Token>,
     pub body: Vec<Box<Stmt>>,
 }
@@ -40,7 +41,7 @@ pub enum LiteralValue {
     Callable(CallableImpl),
     LoxClass {
         name: String,
-        methods: HashMap<String, CallableImpl>,
+        methods: HashMap<String, LoxFunctionImpl>,
         //methods: Vec<(String, LiteralValue)>, // TODO Could also add static fields?
     },
     LoxInstance {
@@ -463,7 +464,7 @@ impl Expr {
                 let callable_impl = CallableImpl::LoxFunction(LoxFunctionImpl {
                     name: "anon_funciton".to_string(),
                     arity,
-                    environment: environment.clone(),
+                    parent_env: environment.clone(),
                     params: arguments,
                     body,
                 });
@@ -484,8 +485,9 @@ impl Expr {
             Expr::Variable { id: _, name } => match environment.get(&name.lexeme, self.get_id()) {
                 Some(value) => Ok(value.clone()),
                 None => Err(format!(
-                    "Variable '{}' has not been declared at distance",
-                    name.lexeme
+                    "Variable '{}' has not been declared at distance {:?}",
+                    name.lexeme,
+                    environment.get_distance(self.get_id())
                 )),
             },
             Expr::Call {
@@ -559,7 +561,7 @@ impl Expr {
             } => {
                 let obj_value = object.evaluate(environment.clone())?;
                 // Now obj_value should be a LoxInstance
-                if let LoxInstance { class, fields } = obj_value {
+                if let LoxInstance { class, fields } = obj_value.clone() {
                     for (field_name, value) in (*fields.borrow()).iter() {
                         if field_name == &name.lexeme {
                             return Ok(value.clone());
@@ -567,8 +569,11 @@ impl Expr {
                     }
                     if let LoxClass { name: _, methods } = class.as_ref() {
                         if let Some(method) = methods.get(&name.lexeme) {
-                            let callable_impl = method.clone();
-                            return Ok(Callable(callable_impl));
+                            let mut callable_impl = method.clone();
+                            let new_env = callable_impl.parent_env.enclose();
+                            new_env.define("this".to_string(), obj_value.clone());
+                            callable_impl.parent_env = new_env;
+                            return Ok(Callable(LoxFunction(callable_impl)));
                         }
                     } else {
                         panic!("The class field on an instance was not a LoxClass");
@@ -616,7 +621,12 @@ impl Expr {
                     ))
                 }
             }
-            Expr::This { id: _, keyword: _ } => todo!(),
+            Expr::This { id: _, keyword: _ } => {
+                let this = environment
+                    .get("this", self.get_id())
+                    .expect("Couldn't lookup 'this'");
+                Ok(this)
+            }
             Expr::Grouping { id: _, expression } => expression.evaluate(environment),
             Expr::Unary {
                 id: _,
@@ -721,19 +731,18 @@ fn run_lox_function(
         arg_vals.push(val);
     }
 
+    let fun_env = loxfun.parent_env.enclose();
+
     for (i, val) in arg_vals.iter().enumerate() {
-        loxfun
-            .environment
-            .define(loxfun.params[i].lexeme.clone(), (*val).clone());
+        fun_env.define(loxfun.params[i].lexeme.clone(), (*val).clone());
     }
 
-    let mut int = Interpreter::with_env(loxfun.environment.clone());
+    let mut int = Interpreter::with_env(fun_env);
     for i in 0..(loxfun.body.len()) {
-        int.interpret(vec![&loxfun.body[i]]).expect(&format!(
-            "Evaluating failed inside function at statement {}",
-            i
-        ));
-
+        let result = int.interpret(vec![&loxfun.body[i]]);
+        if let Err(e) = result {
+            return Err(e);
+        }
         if let Some(value) = int.specials.get("return") {
             return Ok(value.clone());
         }
