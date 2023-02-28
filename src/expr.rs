@@ -499,6 +499,7 @@ impl Expr {
                 // Look up function definition in environment
                 // let callable_distance = locals.borrow().get(&self.get_id());
                 let callable: LiteralValue = (*callee).evaluate(environment.clone())?;
+                let callable_clone = callable.clone();
                 match callable {
                     Callable(CallableImpl::LoxFunction(loxfun)) => {
                         run_lox_function(loxfun, arguments, environment)
@@ -510,19 +511,32 @@ impl Expr {
                         }
                         Ok((nativefun.fun)(&evaluated_arguments))
                     }
-                    LoxClass {
-                        name: _,
-                        methods: _,
-                    } => {
-                        if arguments.len() != 0 {
-                            return Err(
-                                "Can only call the constructor with zero arguments".to_string()
-                            );
-                        }
-                        Ok(LoxInstance {
-                            class: Box::new(callable.clone()),
+                    LoxClass { name: _, methods } => {
+                        let instance = LoxInstance {
+                            class: Box::new(callable_clone.clone()),
                             fields: Rc::new(RefCell::new(vec![])),
-                        })
+                        };
+
+                        if let Some(init_method) = methods.get("init") {
+                            if init_method.arity != arguments.len() {
+                                return Err(
+                                    "Invalid number of arguments in constructor".to_string()
+                                );
+                            }
+
+                            let new_env = environment.enclose();
+                            new_env.define("this".to_string(), instance.clone());
+                            let mut init_method = init_method.clone();
+                            init_method.parent_env = new_env.clone();
+
+                            if let Err(msg) =
+                                run_lox_function(init_method, arguments, environment)
+                            {
+                                return Err(msg);
+                            }
+                        }
+
+                        Ok(instance)
                     }
                     other => Err(format!("{} is not callable", other.to_type())),
                 }
@@ -709,7 +723,7 @@ impl Expr {
     }
 }
 
-fn run_lox_function(
+pub fn run_lox_function(
     loxfun: LoxFunctionImpl,
     arguments: &Vec<Expr>,
     eval_env: Environment,

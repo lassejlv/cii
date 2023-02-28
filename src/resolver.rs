@@ -38,7 +38,10 @@ impl Resolver {
                 self.define(name);
 
                 self.begin_scope();
-                self.scopes.last_mut().unwrap().insert("this".to_string(), true);
+                self.scopes
+                    .last_mut()
+                    .unwrap()
+                    .insert("this".to_string(), true);
                 for method in methods {
                     let declaration = FunctionType::Method;
                     self.resolve_function(method, declaration)?;
@@ -258,11 +261,12 @@ impl Resolver {
                 self.resolve_expr(value)?;
                 self.resolve_expr(object)
             }
-            Expr::This {
-                id: _,
-                keyword,
-            } => 
-                self.resolve_local(keyword, expr.get_id()),
+            Expr::This { id: _, keyword } => {
+                if self.current_function != FunctionType::Method {
+                    return Err("Cannot use 'this' keyword outside of a class".to_string());
+                }
+                self.resolve_local(keyword, expr.get_id())
+            }
             Expr::Unary {
                 id: _,
                 operator: _,
