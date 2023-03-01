@@ -1,4 +1,4 @@
-use crate::expr::{LiteralValue, NativeFunctionImpl, CallableImpl};
+use crate::expr::{CallableImpl, LiteralValue, NativeFunctionImpl};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -24,13 +24,10 @@ fn get_globals() -> Rc<RefCell<HashMap<String, LiteralValue>>> {
     let fun_impl = NativeFunctionImpl {
         name: "clock".to_string(),
         arity: 0,
-        fun: Rc::new(clock_impl), 
+        fun: Rc::new(clock_impl),
     };
     let callable_impl = CallableImpl::NativeFunction(fun_impl);
-    env.insert(
-        "clock".to_string(),
-        LiteralValue::Callable(callable_impl),
-    );
+    env.insert("clock".to_string(), LiteralValue::Callable(callable_impl));
 
     Rc::new(RefCell::new(env))
 }
@@ -68,12 +65,21 @@ impl Environment {
         self.get_internal(name, distance)
     }
 
+    pub fn get_this_instance(&self, super_id: usize) -> Option<LiteralValue> {
+        let distance = self
+            .locals
+            .borrow()
+            .get(&super_id)
+            .cloned()
+            .expect("Could not find 'this' even though 'super' was defined");
+        self.get_internal("this", Some(distance - 1))
+    }
+
     pub fn get_distance(&self, expr_id: usize) -> Option<usize> {
         self.locals.borrow().get(&expr_id).cloned()
     }
 
-    
-    fn get_internal(&self, name: &str, distance: Option<usize>) -> Option<LiteralValue> {    
+    fn get_internal(&self, name: &str, distance: Option<usize>) -> Option<LiteralValue> {
         if let None = distance {
             match &self.enclosing {
                 None => self.values.borrow().get(name).cloned(),
@@ -104,7 +110,7 @@ impl Environment {
         let distance = self.locals.borrow().get(&expr_id).cloned();
         self.assign_internal(name, value, distance)
     }
-        
+
     fn assign_internal(&self, name: &str, value: LiteralValue, distance: Option<usize>) -> bool {
         if let None = distance {
             match &self.enclosing {
@@ -127,6 +133,22 @@ impl Environment {
                 true
             }
         }
+    }
+
+    #[allow(dead_code)]
+    pub fn dump(&self, indent: usize) -> String {
+        let mut result = String::new();
+        for (key, val) in self.values.borrow().iter() {
+            for _ in 0..indent {
+                result.push_str(" ");
+            }
+            result.push_str(&format!("{}: {:?}\n", key, val));
+        }
+        if let Some(env) = &self.enclosing {
+            result.push_str(&env.dump(indent + 2));
+        }
+
+        result
     }
 }
 

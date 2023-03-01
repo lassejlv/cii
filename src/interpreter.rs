@@ -64,11 +64,34 @@ impl Interpreter {
                     // self.environment = self.environment.enclosing.unwrap();
                     block_result?;
                 }
-                Stmt::Class { name, methods } => {
+                Stmt::Class { name, methods, superclass } => {
+                    let mut methods_map = HashMap::new();
+
+                    // Insert the methods of the superclass into the methods of this class
+                    let superclass_value;  
+                    if let Some(superclass) = superclass {
+                        let superclass = superclass.evaluate(self.environment.clone())?;
+                        if let LiteralValue::LoxClass { .. } = superclass {
+                           superclass_value = Some(Box::new(superclass)); 
+                        } else {
+                            return Err(format!(
+                                "Superclass must be a class, not {}",
+                                superclass.to_string()
+                            ));
+                        }
+                    } else {
+                        superclass_value = None;
+                    }
+
+
                     self.environment
                         .define(name.lexeme.clone(), LiteralValue::Nil);
 
-                    let mut methods_map = HashMap::new();
+                    self.environment = self.environment.enclose();
+                    if let Some(sc) = superclass_value.clone() {
+                        self.environment.define("super".to_string(), *sc);
+                    }
+
                     for method in methods {
                         if let Stmt::Function {
                             name,
@@ -88,11 +111,14 @@ impl Interpreter {
                     let klass = LiteralValue::LoxClass {
                         name: name.lexeme.clone(),
                         methods: methods_map,
+                        superclass: superclass_value,
                     };
 
                     if !self.environment.assign_global(&name.lexeme, klass) {
                         return Err(format!("Class definition failed for {}", name.lexeme));
                     }
+
+                    self.environment = *self.environment.enclosing.clone().unwrap();
                 }
                 Stmt::IfStmt {
                     predicate,

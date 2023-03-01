@@ -66,6 +66,16 @@ impl Parser {
 
     fn class_declaration(&mut self) -> Result<Stmt, String> {
         let name = self.consume(Identifier, "Expected name after 'class' keyword.")?;
+        let superclass = if self.match_token(TokenType::Less) {
+            self.consume(Identifier, "Expected superclass name after '<'.")?;
+            Some(Expr::Variable {
+                id: self.get_id(),
+                name: self.previous(),
+            })
+        } else {
+            None
+        };
+
         self.consume(LeftBrace, "Expected '{' before class body.")?;
 
         let mut methods = vec![];
@@ -79,6 +89,7 @@ impl Parser {
         Ok(Stmt::Class {
             name,
             methods,
+            superclass,
         })
     }
 
@@ -360,14 +371,16 @@ impl Parser {
                     name,
                     value: Box::from(value),
                 }),
-                Get { id: _, object, name } => {
-                    Ok(Set {
-                        id: self.get_id(),
-                        object,
-                        name,
-                        value: Box::new(value),
-                    })
-                }
+                Get {
+                    id: _,
+                    object,
+                    name,
+                } => Ok(Set {
+                    id: self.get_id(),
+                    object,
+                    name,
+                    value: Box::new(value),
+                }),
                 _ => Err("Invalid assignment target.".to_string()),
             }
         } else {
@@ -525,7 +538,7 @@ impl Parser {
                 expr = Get {
                     id: self.get_id(),
                     object: Box::new(expr),
-                    name
+                    name,
                 };
             } else {
                 break;
@@ -596,6 +609,18 @@ impl Parser {
                 result = Expr::This {
                     id: self.get_id(),
                     keyword: token,
+                };
+            }
+            TokenType::Super => {
+                // Should always occur with a method call
+                self.advance();
+                self.consume(TokenType::Dot, "Expected '.' after 'super'.")?;
+                let method =
+                    self.consume(TokenType::Identifier, "Expected superclass method name.")?;
+                result = Expr::Super {
+                    id: self.get_id(),
+                    keyword: token,
+                    method,
                 };
             }
             Fun => {

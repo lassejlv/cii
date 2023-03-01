@@ -42,6 +42,7 @@ pub enum LiteralValue {
     LoxClass {
         name: String,
         methods: HashMap<String, LoxFunctionImpl>,
+        superclass: Option<Box<LiteralValue>>,
         //methods: Vec<(String, LiteralValue)>, // TODO Could also add static fields?
     },
     LoxInstance {
@@ -102,7 +103,12 @@ fn unwrap_as_string(literal: Option<scanner::LiteralValue>) -> String {
 
 macro_rules! class_name {
     ($class:expr) => {{
-        if let LiteralValue::LoxClass { name, methods: _ } = &**$class {
+        if let LiteralValue::LoxClass {
+            name,
+            methods: _,
+            superclass: _,
+        } = &**$class
+        {
             name
         } else {
             panic!("Unreachable")
@@ -128,7 +134,11 @@ impl LiteralValue {
                 arity,
                 ..
             })) => format!("{name}/{arity}"),
-            LiteralValue::LoxClass { name, methods: _ } => format!("Class '{name}'"),
+            LiteralValue::LoxClass {
+                name,
+                methods: _,
+                superclass: _,
+            } => format!("Class '{name}'"),
             LiteralValue::LoxInstance { class, fields: _ } => {
                 format!("Instance of '{}'", class_name!(class))
             }
@@ -146,6 +156,7 @@ impl LiteralValue {
             LiteralValue::LoxClass {
                 name: _,
                 methods: _,
+                superclass: _,
             } => "Class",
             LiteralValue::LoxInstance { class, fields: _ } => &class_name!(class),
         }
@@ -190,10 +201,7 @@ impl LiteralValue {
             False => True,
             Nil => True,
             Callable(_) => panic!("Cannot use Callable as a falsy value"),
-            LoxClass {
-                name: _,
-                methods: _,
-            } => panic!("Cannot use class as a falsy value"),
+            LoxClass { .. } => panic!("Cannot use class as a falsy value"),
             _ => panic!("Not valid as a boolean value"),
         }
     }
@@ -218,10 +226,7 @@ impl LiteralValue {
             False => False,
             Nil => False,
             Callable(_) => panic!("Cannot use Callable as a truthy value"),
-            LoxClass {
-                name: _,
-                methods: _,
-            } => panic!("Cannot use class as a truthy value"),
+            LoxClass { .. } => panic!("Cannot use class as a truthy value"),
             _ => panic!("Not valid as a boolean value"),
         }
     }
@@ -284,6 +289,11 @@ pub enum Expr {
     This {
         id: usize,
         keyword: Token,
+    },
+    Super {
+        id: usize,
+        keyword: Token,
+        method: Token,
     },
     Unary {
         id: usize,
@@ -365,6 +375,11 @@ impl Expr {
                 value: _,
             } => *id,
             Expr::This { id, keyword: _ } => *id,
+            Expr::Super {
+                id,
+                keyword: _,
+                method: _,
+            } => *id,
             Expr::Unary {
                 id,
                 operator: _,
@@ -435,6 +450,11 @@ impl Expr {
                 value.to_string()
             ),
             Expr::This { id: _, keyword: _ } => format!("(this)"),
+            Expr::Super {
+                id: _,
+                keyword: _,
+                method,
+            } => format!("(super {})", method.lexeme),
             Expr::Unary {
                 id: _,
                 operator,
@@ -511,12 +531,17 @@ impl Expr {
                         }
                         Ok((nativefun.fun)(&evaluated_arguments))
                     }
-                    LoxClass { name: _, methods } => {
+                    LoxClass {
+                        name: _,
+                        methods,
+                        superclass: _,
+                    } => {
                         let instance = LoxInstance {
                             class: Box::new(callable_clone.clone()),
                             fields: Rc::new(RefCell::new(vec![])),
                         };
 
+                        // Call constructor if present
                         if let Some(init_method) = methods.get("init") {
                             if init_method.arity != arguments.len() {
                                 return Err(
@@ -524,13 +549,17 @@ impl Expr {
                                 );
                             }
 
-                            let new_env = environment.enclose();
-                            new_env.define("this".to_string(), instance.clone());
+                            // let new_env = environment.enclose();
+                            // new_env.define("this".to_string(), instance.clone());
+                            // let mut init_method = init_method.clone();
+                            // init_method.parent_env = new_env.clone();
                             let mut init_method = init_method.clone();
-                            init_method.parent_env = new_env.clone();
+                            init_method.parent_env = init_method.parent_env.enclose();
+                            init_method
+                                .parent_env
+                                .define("this".to_string(), instance.clone());
 
-                            if let Err(msg) =
-                                run_lox_function(init_method, arguments, environment)
+                            if let Err(msg) = run_lox_function(init_method, arguments, environment)
                             {
                                 return Err(msg);
                             }
@@ -577,12 +606,22 @@ impl Expr {
                 // Now obj_value should be a LoxInstance
                 if let LoxInstance { class, fields } = obj_value.clone() {
                     for (field_name, value) in (*fields.borrow()).iter() {
+                        // Are we getting a field on the object?
                         if field_name == &name.lexeme {
                             return Ok(value.clone());
                         }
                     }
-                    if let LoxClass { name: _, methods } = class.as_ref() {
-                        if let Some(method) = methods.get(&name.lexeme) {
+                    // Are we getting a method on the object?
+                    // TODO Make a function that finds a method on a class by looking first at the
+                    // class, then at the superclasses in a recursive manner
+
+                    if let LoxClass {
+                        name: _,
+                        methods: _,
+                        superclass: _,
+                    } = class.as_ref()
+                    {
+                        if let Some(method) = find_method(&name.lexeme, *class.clone()) {
                             let mut callable_impl = method.clone();
                             let new_env = callable_impl.parent_env.enclose();
                             new_env.define("this".to_string(), obj_value.clone());
@@ -640,6 +679,45 @@ impl Expr {
                     .get("this", self.get_id())
                     .expect("Couldn't lookup 'this'");
                 Ok(this)
+            }
+            Expr::Super {
+                id: _,
+                keyword: _,
+                method,
+            } => {
+                let superclass = environment.get("super", self.get_id()).expect(&format!(
+                    "Couldn't lookup 'super':\n---------------\n{}---------------\n",
+                    environment.dump(0)
+                ));
+
+                let instance = environment.get_this_instance(self.get_id()).unwrap();
+
+                // let new_env = environment.enclose();
+                // new_env.define("this".to_string(), instance.clone());
+
+                if let LoxClass {
+                    name: _,
+                    methods,
+                    superclass: _,
+                } = superclass.clone()
+                {
+                    if let Some(method_value) = methods.get(&method.lexeme) {
+                        let mut method = method_value.clone();
+                        method.parent_env = method.parent_env.enclose();
+                        method
+                            .parent_env
+                            .define("this".to_string(), instance.clone());
+                        Ok(Callable(LoxFunction(method)))
+                    } else {
+                        Err(format!(
+                            "No method named {} on superclass {}",
+                            method.lexeme,
+                            superclass.to_type()
+                        ))
+                    }
+                } else {
+                    panic!("The superclass field on an instance was not a LoxClass");
+                }
             }
             Expr::Grouping { id: _, expression } => expression.evaluate(environment),
             Expr::Unary {
@@ -763,6 +841,25 @@ pub fn run_lox_function(
     }
 
     Ok(LiteralValue::Nil)
+}
+
+pub fn find_method(name: &str, class: LiteralValue) -> Option<LoxFunctionImpl> {
+    if let LoxClass {
+        name: _,
+        methods,
+        superclass,
+    } = class
+    {
+        if let Some(fun) = methods.get(name) {
+            return Some(fun.clone());
+        }
+        if let Some(superclass) = superclass {
+            return find_method(name, *superclass.clone());
+        }
+        None
+    } else {
+        panic!("Cannot find method on non-class");
+    }
 }
 
 #[cfg(test)]

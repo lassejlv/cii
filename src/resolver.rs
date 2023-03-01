@@ -33,7 +33,20 @@ impl Resolver {
                 name: _,
                 initializer: _,
             } => self.resolve_var(stmt)?,
-            Stmt::Class { name, methods } => {
+            Stmt::Class {
+                name,
+                methods,
+                superclass,
+            } => {
+                if let Some(name) = superclass {
+                    self.resolve_expr(name)?;
+                    self.begin_scope();
+                    self.scopes
+                        .last_mut()
+                        .unwrap()
+                        .insert("super".to_string(), true);
+                }
+
                 self.declare(name)?;
                 self.define(name);
 
@@ -47,6 +60,10 @@ impl Resolver {
                     self.resolve_function(method, declaration)?;
                 }
                 self.end_scope();
+
+                if superclass.is_some() {
+                    self.end_scope();
+                }
             }
             Stmt::Function {
                 name: _,
@@ -264,6 +281,16 @@ impl Resolver {
             Expr::This { id: _, keyword } => {
                 if self.current_function != FunctionType::Method {
                     return Err("Cannot use 'this' keyword outside of a class".to_string());
+                }
+                self.resolve_local(keyword, expr.get_id())
+            }
+            Expr::Super {
+                id: _,
+                keyword,
+                method: _,
+            } => {
+                if self.current_function != FunctionType::Method {
+                    return Err("Cannot use 'super' keyword outside of a class".to_string());
                 }
                 self.resolve_local(keyword, expr.get_id())
             }
