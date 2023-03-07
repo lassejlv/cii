@@ -127,6 +127,8 @@ impl Scanner {
             '<' => {
                 let token = if self.char_match('=') {
                     LessEqual
+                } else if self.char_match('-') {
+                    Gets
                 } else {
                     Less
                 };
@@ -310,6 +312,7 @@ pub enum TokenType {
     Less,
     LessEqual,
     Pipe, // |>
+    Gets, // <-
 
     // Literals
     Identifier,
@@ -496,5 +499,21 @@ mod tests {
         assert_eq!(scanner.tokens[10].token_type, RightBrace);
         assert_eq!(scanner.tokens[11].token_type, Semicolon);
         assert_eq!(scanner.tokens[12].token_type, Eof);
+    }
+
+    #[test]
+    fn gets_keyword() {
+        let source = "fun cmd <- \"echo hello\";";
+        let mut scanner = Scanner::new(source);
+        scanner.scan_tokens().unwrap();
+
+        assert_eq!(scanner.tokens.len(), 6);
+
+        assert_eq!(scanner.tokens[0].token_type, Fun);
+        assert_eq!(scanner.tokens[1].token_type, Identifier);
+        assert_eq!(scanner.tokens[2].token_type, Gets);
+        assert_eq!(scanner.tokens[3].token_type, StringLit);
+        assert_eq!(scanner.tokens[4].token_type, Semicolon);
+        assert_eq!(scanner.tokens[5].token_type, Eof);
     }
 }

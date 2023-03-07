@@ -96,6 +96,16 @@ impl Parser {
     fn function(&mut self, kind: FunctionKind) -> Result<Stmt, String> {
         let name = self.consume(Identifier, &format!("Expected {kind:?} name"))?;
 
+        if self.match_token(Gets) {
+            let cmd_body = self.consume(StringLit, "Expected command body")?; 
+            self.consume(Semicolon, "Expected ';' after command body")?;
+
+            return Ok(Stmt::CmdFunction {
+                name,
+                cmd: cmd_body.lexeme,
+            });
+        }
+
         self.consume(LeftParen, &format!("Expected '(' after {kind:?} name"))?;
 
         let mut parameters = vec![];

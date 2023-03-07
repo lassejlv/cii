@@ -35,6 +35,10 @@ pub enum Stmt {
         params: Vec<Token>,
         body: Vec<Box<Stmt>>,
     },
+    CmdFunction {
+        name: Token,
+        cmd: String,
+    },
     ReturnStmt {
         keyword: Token,
         value: Option<Expr>,
@@ -73,6 +77,7 @@ impl Stmt {
                 params: _,
                 body: _,
             } => todo!(),
+            CmdFunction { name: _, cmd: _ } => todo!(),
             ReturnStmt { keyword: _, value: _ } => todo!(),
             _ => todo!(),
         }

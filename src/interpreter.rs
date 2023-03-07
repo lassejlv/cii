@@ -1,8 +1,10 @@
 use crate::environment::Environment;
-use crate::expr::{CallableImpl, LiteralValue, LoxFunctionImpl};
+use crate::expr::{CallableImpl, LiteralValue, LoxFunctionImpl, NativeFunctionImpl};
 use crate::scanner::Token;
 use crate::stmt::Stmt;
 use std::collections::HashMap;
+use std::process::Command;
+use std::rc::Rc;
 
 pub struct Interpreter {
     pub specials: HashMap<String, LiteralValue>,
@@ -64,15 +66,19 @@ impl Interpreter {
                     // self.environment = self.environment.enclosing.unwrap();
                     block_result?;
                 }
-                Stmt::Class { name, methods, superclass } => {
+                Stmt::Class {
+                    name,
+                    methods,
+                    superclass,
+                } => {
                     let mut methods_map = HashMap::new();
 
                     // Insert the methods of the superclass into the methods of this class
-                    let superclass_value;  
+                    let superclass_value;
                     if let Some(superclass) = superclass {
                         let superclass = superclass.evaluate(self.environment.clone())?;
                         if let LiteralValue::LoxClass { .. } = superclass {
-                           superclass_value = Some(Box::new(superclass)); 
+                            superclass_value = Some(Box::new(superclass));
                         } else {
                             return Err(format!(
                                 "Superclass must be a class, not {}",
@@ -82,7 +88,6 @@ impl Interpreter {
                     } else {
                         superclass_value = None;
                     }
-
 
                     self.environment
                         .define(name.lexeme.clone(), LiteralValue::Nil);
@@ -150,6 +155,36 @@ impl Interpreter {
                     let callable = self.make_function(stmt);
                     let fun = LiteralValue::Callable(CallableImpl::LoxFunction(callable));
                     self.environment.define(name.lexeme.clone(), fun);
+                }
+                Stmt::CmdFunction { name, cmd } => {
+                    // Return a callable that runs a shell command, captures the stdout and returns
+                    // it in a String
+
+                    let cmd = cmd.clone();
+                    let local_fn = move |_args: &Vec<LiteralValue>| {
+                        let cmd = cmd.clone();
+                        let parts = cmd.split(" ").collect::<Vec<&str>>();
+                        let mut command = Command::new(parts[0].replace("\"", ""));
+                        for part in parts[1..].iter() {
+                            command.arg(part.replace("\"", ""));
+                        }
+                        let output = command.output().expect("Failed to run command");
+
+
+                        return LiteralValue::StringValue(
+                            std::str::from_utf8(output.stdout.as_slice())
+                                .unwrap()
+                                .to_string(),
+                        );
+                    };
+
+                    let fun_val =
+                        LiteralValue::Callable(CallableImpl::NativeFunction(NativeFunctionImpl {
+                            name: name.lexeme.clone(),
+                            arity: 0,
+                            fun: Rc::new(local_fn),
+                        }));
+                    self.environment.define(name.lexeme.clone(), fun_val);
                 }
                 Stmt::ReturnStmt { keyword: _, value } => {
                     let eval_val;
