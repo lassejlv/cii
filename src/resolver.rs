@@ -38,8 +38,19 @@ impl Resolver {
                 methods,
                 superclass,
             } => {
-                if let Some(name) = superclass {
-                    self.resolve_expr(name)?;
+                // Resolve superclass, if present
+                if let Some(super_expr) = superclass {
+                    if let Expr::Variable {
+                        id: _,
+                        name: super_name,
+                    } = super_expr
+                    {
+                        if super_name.lexeme == name.lexeme {
+                            return Err("A class cannot inherit from itself".to_string());
+                        }
+                    }
+
+                    self.resolve_expr(super_expr)?;
                     self.begin_scope();
                     self.scopes
                         .last_mut()
@@ -47,9 +58,11 @@ impl Resolver {
                         .insert("super".to_string(), true);
                 }
 
+                // Resolving class
                 self.declare(name)?;
                 self.define(name);
 
+                // Resolving methods
                 self.begin_scope();
                 self.scopes
                     .last_mut()
@@ -291,6 +304,9 @@ impl Resolver {
             } => {
                 if self.current_function != FunctionType::Method {
                     return Err("Cannot use 'super' keyword outside of a class".to_string());
+                }
+                if self.scopes.len() < 3 || !self.scopes[self.scopes.len() - 3].contains_key("super") {
+                    return Err("Class has no superclass".to_string());
                 }
                 self.resolve_local(keyword, expr.get_id())
             }

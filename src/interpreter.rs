@@ -76,7 +76,7 @@ impl Interpreter {
                         } else {
                             return Err(format!(
                                 "Superclass must be a class, not {}",
-                                superclass.to_string()
+                                superclass.to_type()
                             ));
                         }
                     } else {
